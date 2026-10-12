@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Sign in &middot; webmailer{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Sign in</h1>
+  <p class="muted">Enter your email and we'll send you a magic sign-in link.</p>
+
+  {% if not auth_configured %}
+  <p class="status error">Supabase Auth is not configured (missing SUPABASE_URL / SUPABASE_ANON_KEY).</p>
+  {% elif not allowlist_configured %}
+  <p class="status error">No emails are authorised yet. Set <code>AUTH_ALLOWED_EMAILS</code> to allow sign-in.</p>
+  {% else %}
+  <form id="login-form" class="stack">
+    <label>Email
+      <input type="email" id="login-email" required placeholder="you@example.com" autocomplete="email">
+    </label>
+    <button type="submit" class="btn-primary">Send magic link</button>
+    <p id="login-status" class="status"></p>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if auth_configured %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = {{ supabase_url|tojson }};
+  const SUPABASE_ANON_KEY = {{ supabase_anon_key|tojson }};
+  const NEXT_URL = {{ next_url|tojson }};
+  const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const form = document.getElementById("login-form");
+  if (form) {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document.getElementById("login-email").value.trim();
+      const status = document.getElementById("login-status");
+      status.textContent = "Sending…";
+      status.className = "status";
+      const redirectTo = window.location.origin + "/auth/callback";
+      const { error } = await client.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: redirectTo, shouldCreateUser: false },
+      });
+      if (error) {
+        status.textContent = "Error: " + error.message;
+        status.className = "status error";
+      } else {
+        status.textContent = "Check your inbox for the sign-in link.";
+        status.className = "status success";
+      }
+    });
+  }
+</script>
+{% endif %}
+{% endblock %}

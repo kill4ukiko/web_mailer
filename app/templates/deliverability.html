@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Deliverability &middot; webmailer{% endblock %}
+{% block content %}
+<h1>Deliverability check</h1>
+<p class="muted">
+  Verifies that your sending domain is authenticated in Brevo and that the
+  public DNS records (DKIM / SPF / DMARC / MX) that keep you out of spam are in
+  place. Fix anything flagged below, then wait for DNS to propagate and re-check.
+</p>
+
+<div class="toolbar">
+  <label>
+    Domain
+    <input type="text" id="deliverability-domain"
+           value="{{ settings.get('sender_domain') or '' }}" placeholder="yourdomain.com">
+  </label>
+  <button type="button" id="deliverability-run" class="btn btn-primary">Run check</button>
+  <span id="deliverability-status" class="muted"></span>
+</div>
+
+<div id="deliverability-report" class="report">
+  <p class="muted">Checking…</p>
+</div>
+{% endblock %}

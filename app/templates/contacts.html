@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Contacts &middot; webmailer{% endblock %}
+{% macro info(key) -%}
+<button type="button" class="info-icon" data-info="{{ key }}" aria-label="More information">i</button>
+{%- endmacro %}
+{% block content %}
+<div class="section-head">
+  <h1>Contacts <span class="muted">({{ total }})</span></h1>
+  <div class="actions">
+    <button type="button" class="btn btn-ghost" id="cleanup-names-btn"
+            title="Clear last names that were imported identical to the first name">Fix duplicate names</button>
+    <button type="button" class="btn btn-primary" id="toggle-import">Import / add contacts</button>
+  </div>
+</div>
+
+<section id="import-panel" class="form" hidden>
+  <h2>Import or add contacts</h2>
+  <p class="muted">
+    Upload a CSV or Excel file, tell us which column is which, edit any cell, then
+    choose where the rows go. Emails we don't know yet are created automatically.
+  </p>
+  <p class="notice">
+    Please verify your addresses before importing. This platform no longer runs
+    email verification — invalid or risky addresses hurt sender reputation.
+  </p>
+
+  <label>
+    Contact file (.csv, .xls, .xlsx)
+    <input type="file" id="import-file" name="file" accept=".csv,.xls,.xlsx">
+  </label>
+  <div class="form-actions">
+    <button type="button" id="preview-btn" class="btn">Read file</button>
+    <span id="form-status" class="muted"></span>
+  </div>
+
+  <div id="mapping-section" hidden>
+    <h3>Map columns</h3>
+    <div class="grid-2">
+      <label>Email <span class="req">(required)</span>
+        <select id="map-email" class="map-select" data-field="email"></select>
+      </label>
+      <label>First name <select id="map-first_name" class="map-select" data-field="first_name"></select></label>
+      <label>Last name <select id="map-last_name" class="map-select" data-field="last_name"></select></label>
+      <label>Timezone {{ info('timezone') }} <select id="map-timezone" class="map-select" data-field="timezone"></select></label>
+    </div>
+
+    <h3>Keep extra columns as merge fields</h3>
+    <div id="custom-fields" class="pill-row"></div>
+
+    <h3>Staged rows <span class="muted">(edit any cell before saving)</span></h3>
+    <div id="staging-table"></div>
+
+    <fieldset>
+      <legend>Save these contacts to</legend>
+      <label class="checkbox"><input type="radio" name="import-target" value="db" checked> Database only</label>
+      <label class="checkbox"><input type="radio" name="import-target" value="existing"> An existing list
+        <select id="import-target-list">
+          {% for l in lists %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="checkbox"><input type="radio" name="import-target" value="new"> A new list named
+        <input type="text" id="import-target-name" maxlength="255" placeholder="October leads">
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      <button type="button" id="import-btn" class="btn btn-primary">Save contacts</button>
+      <span id="import-status" class="muted"></span>
+    </div>
+  </div>
+</section>
+
+<h2>Lists {{ info('lists') }}</h2>
+<form id="list-create-form" class="form">
+  <fieldset>
+    <legend>New list</legend>
+    <div class="grid-2">
+      <label>List name
+        <input type="text" name="name" required maxlength="255" placeholder="October leads">
+      </label>
+      <label>Description <span class="muted">(optional)</span>
+        <input type="text" name="description" maxlength="1000" placeholder="Signed up at the trade show">
+      </label>
+    </div>
+    <label>Add by email (created if new)
+      <textarea name="emails" rows="2" placeholder="alice@example.com, bob@example.com"></textarea>
+      <small class="muted">Comma or newline separated.</small>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Create list</button>
+      <span id="list-status" class="muted"></span>
+    </div>
+  </fieldset>
+</form>
+
+<div id="lists-container">
+  {% for l in lists %}
+  <div class="list-card" data-list-id="{{ l.id }}">
+    <div class="list-head">
+      <div>
+        <strong>{{ l.name }}</strong>
+        <span class="muted">&middot; {{ l.member_count }} contact{{ '' if l.member_count == 1 else 's' }}</span>
+        {% if l.description %}<div class="muted small">{{ l.description }}</div>{% endif %}
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-sm" data-list-toggle="{{ l.id }}">Manage</button>
+        <button type="button" class="btn btn-sm btn-danger" data-delete-list="{{ l.id }}">Delete</button>
+      </div>
+    </div>
+    <div class="list-members" id="members-{{ l.id }}" hidden></div>
+  </div>
+  {% endfor %}
+  {% if not lists %}<p class="muted" id="no-lists">No lists yet — create one above.</p>{% endif %}
+</div>
+
+<h2>All contacts</h2>
+<div class="filter-row">
+  <a class="pill{{ ' pill-active' if not status else '' }}" href="{{ url_for('web.contacts_list') }}">All</a>
+  <a class="pill{{ ' pill-active' if status == 'active' else '' }}" href="{{ url_for('web.contacts_list', status='active') }}">Active</a>
+  <a class="pill{{ ' pill-active' if status == 'unsubscribed' else '' }}" href="{{ url_for('web.contacts_list', status='unsubscribed') }}">Unsubscribed</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_hard' else '' }}" href="{{ url_for('web.contacts_list', status='bounced_hard') }}">Bounced</a>
+</div>
+
+{% if contacts %}
+<table class="table" id="contacts-table">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="select-all" aria-label="Select all"></th>
+      <th>Email</th><th>First name</th><th>Last name</th><th>Status</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in contacts %}
+    <tr data-contact-id="{{ c.id }}">
+      <td><input type="checkbox" class="contact-select" value="{{ c.id }}"></td>
+      <td>{{ c.email }}</td>
+      <td><input class="inline-edit" data-field="first_name" value="{{ c.first_name or '' }}"></td>
+      <td><input class="inline-edit" data-field="last_name" value="{{ c.last_name or '' }}"></td>
+      <td><span class="badge badge-{{ c.status }}">{{ c.status }}</span></td>
+      <td class="num">
+        <button type="button" class="btn btn-sm" data-save-contact="{{ c.id }}">Save</button>
+        <button type="button" class="btn btn-sm btn-danger" data-delete-contact="{{ c.id }}">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="actions" id="selected-actions">
+  <span class="muted" id="selected-count">0 selected</span>
+  <select id="selected-list-target">
+    <option value="">Choose a list…</option>
+    {% for l in lists %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+  </select>
+  <button type="button" class="btn btn-sm" id="add-selected-btn">Add selected to list</button>
+  <button type="button" class="btn btn-sm" id="create-list-from-selected">Create list from selected</button>
+</div>
+
+<div class="actions">
+  {% if page > 1 %}<a class="btn" href="{{ url_for('web.contacts_list', page=page-1, status=status) }}">Previous</a>{% endif %}
+  {% if contacts|length == 50 %}<a class="btn" href="{{ url_for('web.contacts_list', page=page+1, status=status) }}">Next</a>{% endif %}
+</div>
+{% else %}
+<p class="muted">No contacts yet. Use <strong>Import / add contacts</strong> above.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Settings &middot; webmailer{% endblock %}
+{% macro info(key) -%}
+<button type="button" class="info-icon" data-info="{{ key }}" aria-label="More information">i</button>
+{%- endmacro %}
+{% block content %}
+{% set s = settings or {} %}
+<h1>Global settings</h1>
+<p class="muted">
+  These are the defaults for <strong>all campaigns</strong>. A campaign can
+  override any of them on its own page; per-campaign values always win.
+  Click the <span class="info-icon">i</span> icons for help and examples.
+</p>
+
+<form id="global-settings-form" class="form">
+  <fieldset>
+    <legend>Provider plan {{ info('brevo_plan') }}</legend>
+    <div class="grid-2">
+      <label>
+        Your Brevo plan
+        <select name="brevo_plan" id="brevo-plan-select">
+          {% for key, label in [('free', 'Free'), ('starter', 'Starter'), ('business', 'Business'), ('enterprise', 'Enterprise')] %}
+          <option value="{{ key }}" {% if (s.get('brevo_plan') or 'free') == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <small class="muted">Sets recommended values and the hard limits the guard enforces.</small>
+      </label>
+      <div id="plan-hint" class="muted small"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Sender identity</legend>
+    <div class="grid-2">
+      <label>
+        Default from email {{ info('sender_email') }}
+        <input type="email" name="sender_email"
+               value="{{ s.get('sender_email') or '' }}" placeholder="news@yourdomain.com">
+      </label>
+      <label>
+        Default from name {{ info('sender_name') }}
+        <input type="text" name="sender_name" maxlength="255"
+               value="{{ s.get('sender_name') or '' }}" placeholder="Acme News">
+      </label>
+      <label>
+        Sending domain {{ info('sender_domain') }}
+        <input type="text" name="sender_domain" maxlength="255"
+               value="{{ s.get('sender_domain') or '' }}" placeholder="yourdomain.com">
+      </label>
+      <label>
+        Reply-to address {{ info('reply_to_email') }}
+        <input type="email" name="reply_to_email"
+               value="{{ s.get('reply_to_email') or '' }}" placeholder="hello@yourdomain.com">
+      </label>
+      <label>
+        Operator email {{ info('operator_email') }}
+        <input type="email" name="operator_email"
+               value="{{ s.get('operator_email') or '' }}" placeholder="you@yourdomain.com">
+      </label>
+      <label>
+        Additional allowed domains {{ info('allowed_sender_domains') }}
+        <textarea name="allowed_sender_domains" rows="2"
+                  placeholder="one domain per line">{{ (s.get('allowed_sender_domains') or []) | join('\n') }}</textarea>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Public URL &amp; safety</legend>
+    <div class="grid-2">
+      <label>
+        Public base URL {{ info('public_base_url') }}
+        <input type="url" name="public_base_url"
+               value="{{ s.get('public_base_url') or '' }}" placeholder="https://mail.yourdomain.com">
+        <small class="muted">Used for the open pixel + unsubscribe link. Must be internet-reachable.</small>
+      </label>
+      <label class="checkbox-label">
+        Pause all sending {{ info('sending_paused') }}
+        <span class="checkbox-row">
+          <input type="checkbox" name="sending_paused" {% if s.get('sending_paused') %}checked{% endif %}>
+          Stop every campaign immediately (global kill switch)
+        </span>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Sending rate &amp; caps</legend>
+    <p class="muted">
+      The send rate is a <strong>global ceiling shared by every campaign</strong>.
+      Start low on a new domain (warm-up) and increase gradually.
+    </p>
+    <div class="grid-2">
+      <label>
+        Send rate (emails / minute) {{ info('send_rate_per_minute') }}
+        <input type="number" name="send_rate_per_minute" min="1" max="600"
+               value="{{ s.get('send_rate_per_minute') if s.get('send_rate_per_minute') is not none else 120 }}">
+        <span class="preset-row">
+          <button type="button" class="chip" data-rate-preset="30">Safe 30</button>
+          <button type="button" class="chip" data-rate-preset="120">Balanced 120</button>
+          <button type="button" class="chip" data-rate-preset="600">Fast 600</button>
+        </span>
+      </label>
+      <label>
+        Batch size {{ info('default_batch_size') }}
+        <input type="number" name="default_batch_size" min="1" max="5000"
+               value="{{ s.get('default_batch_size') if s.get('default_batch_size') is not none else 500 }}">
+        <small class="muted">Recipients claimed per cycle.</small>
+      </label>
+      <label>
+        Max recipients / hour {{ info('max_recipients_per_hour') }}
+        <input type="number" name="max_recipients_per_hour" min="1" max="20000"
+               value="{{ s.get('max_recipients_per_hour') if s.get('max_recipients_per_hour') is not none else 2000 }}">
+      </label>
+      <label>
+        Max recipients / day {{ info('max_recipients_per_day') }}
+        <input type="number" name="max_recipients_per_day" min="1" max="100000"
+               value="{{ s.get('max_recipients_per_day') if s.get('max_recipients_per_day') is not none else 8000 }}">
+      </label>
+      <label>
+        Stagger jitter (seconds) {{ info('stagger_seconds') }}
+        <input type="number" name="default_stagger_seconds" min="0" max="86400"
+               value="{{ s.get('default_stagger_seconds') if s.get('default_stagger_seconds') is not none else 0 }}">
+        <small class="muted">Random extra delay (0..N) between batches.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Circuit-breaker thresholds</legend>
+    <div class="grid-2">
+      <label>
+        Max hard-bounce rate {{ info('max_hard_bounce_rate') }}
+        <input type="number" name="max_hard_bounce_rate" min="0" max="1" step="0.001"
+               value="{{ s.get('max_hard_bounce_rate') if s.get('max_hard_bounce_rate') is not none else 0.02 }}">
+        <small class="muted">Fraction, e.g. 0.02 = 2%. Campaign pauses above this.</small>
+      </label>
+      <label>
+        Max complaint rate {{ info('max_complaint_rate') }}
+        <input type="number" name="max_complaint_rate" min="0" max="1" step="0.0001"
+               value="{{ s.get('max_complaint_rate') if s.get('max_complaint_rate') is not none else 0.001 }}">
+        <small class="muted">Fraction, e.g. 0.001 = 0.1%.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Default delivery window {{ info('window') }}</legend>
+    <div class="grid-2">
+      <label>
+        Window timezone
+        <input type="text" name="default_window_timezone" maxlength="64"
+               value="{{ s.get('default_window_timezone') or 'UTC' }}"
+               placeholder="UTC / America/New_York">
+      </label>
+      <span></span>
+      <label>
+        Window open (time of day)
+        <input type="time" name="default_window_start"
+               value="{{ s.get('default_window_start')[:5] if s.get('default_window_start') else '' }}">
+      </label>
+      <label>
+        Window close (time of day)
+        <input type="time" name="default_window_end"
+               value="{{ s.get('default_window_end')[:5] if s.get('default_window_end') else '' }}">
+      </label>
+    </div>
+    <small class="muted">Leave blank for 24/7. If open &gt; close the window spans midnight.</small>
+  </fieldset>
+
+  <fieldset>
+    <legend>Warm-up {{ info('warmup') }}</legend>
+    <div class="grid-2">
+      <label class="checkbox-label">
+        <span class="checkbox-row">
+          <input type="checkbox" name="warmup_enabled" {% if s.get('warmup_enabled') %}checked{% endif %}>
+          Enable warm-up mode
+        </span>
+      </label>
+      <label>
+        Warm-up start date
+        <input type="date" name="warmup_start_date"
+               value="{{ s.get('warmup_start_date') or '' }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Test your setup</legend>
+    <div class="grid-2">
+      <label>
+        Send a test email to
+        <span class="inline-row">
+          <input type="email" id="test-email-to"
+                 value="{{ s.get('operator_email') or s.get('sender_email') or '' }}"
+                 placeholder="you@yourdomain.com">
+          <button type="button" id="test-email-btn" class="btn">Send test email</button>
+        </span>
+        <small class="muted">Check the inbox and headers (DKIM/DMARC passed) before a real run.</small>
+      </label>
+      <label>
+        Telegram alerts
+        <span class="inline-row">
+          <button type="button" id="test-telegram-btn" class="btn">Send test alert</button>
+        </span>
+        <small class="muted">Campaign started/completed/paused and circuit trips notify this chat.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save settings</button>
+    <a class="btn" href="{{ url_for('web.deliverability_page') }}">Check deliverability</a>
+    <span id="form-status" class="muted"></span>
+  </div>
+</form>
+{% endblock %}

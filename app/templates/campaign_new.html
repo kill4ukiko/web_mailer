@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if campaign else 'New' }} campaign &middot; webmailer{% endblock %}
+{% macro info(key) -%}
+<button type="button" class="info-icon" data-info="{{ key }}" aria-label="More information">i</button>
+{%- endmacro %}
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<h1>{{ 'Edit campaign' if campaign else 'New campaign' }}</h1>
+<p class="muted">
+  Click the <span class="info-icon">i</span> icons for help and examples on any setting.
+</p>
+
+<form id="campaign-form" class="form"
+      data-current-priority="{{ campaign.priority if campaign else 'normal' }}"
+      {% if campaign %}data-campaign-id="{{ campaign.id }}"{% endif %}>
+  <div class="grid-2">
+    <label>
+      Campaign name
+      <input type="text" name="name" required maxlength="255" placeholder="October newsletter"
+             value="{{ campaign.name if campaign else '' }}">
+    </label>
+    <label>
+      Subject
+      <input type="text" name="subject" required maxlength="255" placeholder="Your October update"
+             value="{{ campaign.subject if campaign else '' }}">
+    </label>
+    <label>
+      From email {{ info('sender_email') }}
+      <input type="email" name="from_email" required
+             value="{{ campaign.from_email if campaign else default_sender_email }}">
+      <small class="muted">Must be on your authenticated domain
+        ({{ settings.get('sender_domain') or 'not set' }}).</small>
+    </label>
+    <label>
+      From name {{ info('sender_name') }}
+      <input type="text" name="from_name" required
+             value="{{ campaign.from_name if campaign else default_sender_name }}">
+    </label>
+  </div>
+
+  <div class="editor-head">
+    <label class="checkbox">
+      <input type="checkbox" id="rich-toggle"> Use rich text editor
+    </label>
+    <div class="merge-buttons">
+      <span class="muted">Insert:</span>
+      <button type="button" class="chip" data-merge="{{ '{{first_name}}' }}">first_name</button>
+      <button type="button" class="chip" data-merge="{{ '{{last_name}}' }}">last_name</button>
+      <button type="button" class="chip" data-merge="{{ '{{email}}' }}">email</button>
+      <button type="button" class="chip" data-merge="{{ '{{unsubscribe}}' }}">unsubscribe</button>
+    </div>
+  </div>
+
+  <div id="quill-editor" class="quill-host" hidden></div>
+
+  <label id="html-label">
+    HTML content
+    <textarea name="html_content" id="html_content" rows="14" required
+      placeholder="<h1>Hello {{ '{{first_name}}' }}</h1>...">{{ campaign.html_content if campaign else '' }}</textarea>
+    <small class="muted">
+      An email shell, an unsubscribe link, a tracking pixel and click tracking are
+      added automatically on send. Merge tags:
+      {{ '{{first_name}}' }}, {{ '{{last_name}}' }}, {{ '{{email}}' }}, {{ '{{unsubscribe}}' }}.
+    </small>
+  </label>
+
+  <p class="muted">
+    The plain-text version is generated automatically from the HTML on send — no
+    separate field needed.
+  </p>
+
+  <fieldset>
+    <legend>Recipients</legend>
+    {% if lists %}
+    <div class="list-picker" data-list-picker>
+      <span class="list-picker-label">Contact lists {{ info('lists') }}</span>
+      <button type="button" class="list-picker-toggle" aria-haspopup="listbox" aria-expanded="false">
+        <span class="list-picker-summary muted">Select lists…</span>
+        <span class="list-picker-caret" aria-hidden="true">&#9662;</span>
+      </button>
+      <div class="list-picker-menu" role="listbox" hidden>
+        {% for l in lists %}
+        <label class="checkbox list-picker-option">
+          <input type="checkbox" class="list-picker-item" value="{{ l.id }}"
+                 data-name="{{ l.name }}" {% if l.id in campaign_list_ids %}checked{% endif %}>
+          {{ l.name }} <span class="muted">({{ l.member_count }})</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    <small class="muted">
+      Pick one or more lists. Contacts from every selected list are included.
+      Combine with extra emails below, or leave both empty to send to all active contacts.
+    </small>
+    {% else %}
+    <p class="muted">No contact lists yet —
+      <a class="link" href="{{ url_for('web.contacts_list') }}">create one</a>.</p>
+    {% endif %}
+
+    {% if not campaign %}
+    <label>
+      Recipients — extra emails <span class="muted">(comma or newline separated)</span>
+      <textarea name="recipient_emails" rows="3" placeholder="alice@example.com, bob@example.com"></textarea>
+    </label>
+    {% endif %}
+  </fieldset>
+
+  <fieldset>
+    <legend>Delivery settings <span class="muted">(optional — override global defaults)</span></legend>
+    <p class="muted">
+      Leave any field blank to inherit the value from
+      <a class="link" href="{{ url_for('web.settings_page') }}">global settings</a>.
+      Pace conservatively: sending too fast is the fastest way to hurt your sender reputation.
+    </p>
+    <div class="grid-2">
+      <label>
+        Send rate (emails / minute) {{ info('send_rate_per_minute') }}
+        <input type="number" name="send_rate_per_minute" min="1" max="600"
+               value="{{ campaign.send_rate_per_minute if campaign and campaign.send_rate_per_minute else '' }}"
+               placeholder="{{ global_defaults.send_rate_per_minute }}">
+        <span class="preset-row">
+          <button type="button" class="chip" data-rate-preset="30">Safe 30</button>
+          <button type="button" class="chip" data-rate-preset="120">Balanced 120</button>
+          <button type="button" class="chip" data-rate-preset="600">Fast 600</button>
+        </span>
+      </label>
+      <label>
+        Batch size {{ info('default_batch_size') }}
+        <input type="number" name="batch_size" min="1" max="5000"
+               value="{{ campaign.batch_size if campaign else '' }}"
+               placeholder="{{ global_defaults.batch_size }}">
+      </label>
+      <label>
+        Stagger jitter (seconds) {{ info('stagger_seconds') }}
+        <input type="number" name="stagger_seconds" min="0" max="86400"
+               value="{{ campaign.stagger_seconds if campaign else '' }}"
+               placeholder="{{ global_defaults.stagger_seconds }}">
+      </label>
+      <label>
+        Start time <span class="muted">(blank = manual start)</span>
+        <input type="datetime-local" name="schedule_at"
+               value="{{ campaign.schedule_at[:16] if campaign and campaign.schedule_at else '' }}">
+      </label>
+      <label class="checkbox-label">
+        High priority {{ info('priority') }}
+        <span class="checkbox-row">
+          <input type="checkbox" name="priority"
+                 {% if campaign and campaign.priority == 'high' %}checked{% endif %}>
+          Take the whole send budget while this campaign has work
+        </span>
+        <small class="muted">Other sending campaigns wait (not paused) and resume automatically.</small>
+      </label>
+      <label>
+        Window timezone {{ info('window') }}
+        <input type="text" name="window_timezone" maxlength="64"
+               value="{{ campaign.window_timezone if campaign else '' }}"
+               placeholder="{{ global_defaults.window_timezone or 'UTC' }}">
+      </label>
+      <label>
+        Window open (time of day)
+        <input type="time" name="window_start"
+               value="{{ campaign.window_start[:5] if campaign and campaign.window_start else '' }}">
+      </label>
+      <label>
+        Window close (time of day)
+        <input type="time" name="window_end"
+               value="{{ campaign.window_end[:5] if campaign and campaign.window_end else '' }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ 'Save changes' if campaign else 'Create campaign' }}</button>
+    <button type="button" id="preflight-btn" class="btn">Check spam score</button>
+    <a class="btn" href="{{ url_for('web.campaign_detail', campaign_id=campaign.id) if campaign else url_for('web.index') }}">Cancel</a>
+    <span id="form-status" class="muted"></span>
+  </div>
+  <div id="preflight-result" class="muted"></div>
+</form>
+
+{% if campaign %}
+<form id="send-test-form" class="form" data-campaign-id="{{ campaign.id }}">
+  <fieldset>
+    <legend>Send a test</legend>
+    <p class="muted">Sends one real email (subject prefixed <code>[TEST]</code>) with tracking
+      and unsubscribe links so you can check inbox placement before the full run.</p>
+    <div class="inline-row">
+      <input type="email" name="to" required placeholder="you@yourdomain.com"
+             value="{{ settings.get('operator_email') or settings.get('sender_email') or '' }}">
+      <button type="submit" class="btn">Send test email</button>
+      <span id="send-test-status" class="muted"></span>
+    </div>
+  </fieldset>
+</form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+  window.__WEBMAILER_EDIT__ = {{ 'true' if campaign else 'false' }};
+</script>
+{% endblock %}

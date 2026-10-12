@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} &middot; webmailer{% endblock %}
+{% block content %}
+<p><a class="link" href="{{ url_for('web.index') }}">&larr; Dashboard</a></p>
+<h1>{{ campaign.name }} <span class="badge badge-{{ campaign.status }}">{{ campaign.status }}</span>
+  {% if campaign.priority == 'high' %}<span class="badge badge-priority">high priority</span>{% endif %}</h1>
+<p class="muted">{{ campaign.subject }} &middot; from {{ campaign.from_name }} &lt;{{ campaign.from_email }}&gt;</p>
+<p>
+  {% if campaign.status in ('draft', 'scheduled', 'paused') %}
+    <a class="btn" href="{{ url_for('web.campaign_edit', campaign_id=campaign.id) }}">Edit campaign</a>
+  {% endif %}
+  <a class="btn" href="{{ url_for('web.campaign_settings', campaign_id=campaign.id) }}">Delivery settings</a>
+  {% if campaign.status != 'sending' %}
+    <button class="btn btn-danger" data-delete-campaign="{{ campaign.id }}">Delete campaign</button>
+  {% endif %}
+</p>
+
+<section class="cards">
+  <div class="card"><span class="card-value">{{ campaign.stats.get('sent', 0) }}</span><span class="card-label">Sent</span></div>
+  <div class="card"><span class="card-value">{{ campaign.stats.get('delivered', 0) }}</span><span class="card-label">Delivered</span></div>
+  <div class="card"><span class="card-value">{{ campaign.stats.get('opens', 0) }}</span><span class="card-label">Opens</span></div>
+  <div class="card"><span class="card-value">{{ campaign.stats.get('clicks', 0) }}</span><span class="card-label">Clicks</span></div>
+  <div class="card"><span class="card-value">{{ campaign.stats.get('bounces', 0) }}</span><span class="card-label">Bounces</span></div>
+  <div class="card"><span class="card-value">{{ campaign.stats.get('complaints', 0) }}</span><span class="card-label">Complaints</span></div>
+</section>
+
+<section>
+  <h2>Controls</h2>
+  <div class="actions">
+    {% if campaign.status in ('draft', 'scheduled') %}
+      <button class="btn btn-primary" data-action="start" data-campaign="{{ campaign.id }}"
+              data-recipients="{{ recipients|length }}">Start sending</button>
+    {% endif %}
+    {% if campaign.status == 'sending' %}
+      <button class="btn" data-action="pause" data-campaign="{{ campaign.id }}">Pause</button>
+    {% endif %}
+    {% if campaign.status == 'paused' %}
+      <button class="btn btn-primary" data-action="resume" data-campaign="{{ campaign.id }}">Resume</button>
+      <button class="btn btn-danger" data-action="cancel" data-campaign="{{ campaign.id }}">Cancel</button>
+    {% endif %}
+    {% if campaign.status not in ('completed', 'cancelled') %}
+      {% if campaign.status in ('draft', 'scheduled', 'sending') %}
+        <button class="btn btn-danger" data-action="cancel" data-campaign="{{ campaign.id }}">Cancel</button>
+      {% endif %}
+      <button class="btn" data-priority-toggle="{{ campaign.id }}"
+              data-current="{{ campaign.priority or 'normal' }}">
+        {{ 'Clear high priority' if campaign.priority == 'high' else 'Make high priority' }}
+      </button>
+    {% endif %}
+    <span class="muted">Circuit breaker: <strong>{{ campaign.circuit_state }}</strong></span>
+  </div>
+  <p id="action-status" class="muted"></p>
+</section>
+
+<section>
+  <h2>Reuse this campaign</h2>
+  <div class="reuse-counts">
+    <span class="badge">New only: {{ reuse_counts.new }}</span>
+    <span class="badge">Previous: {{ reuse_counts.previous }}</span>
+    <span class="badge">Previous + New: {{ reuse_counts.all }}</span>
+  </div>
+  <div class="reuse-options">
+    <label>Recipients
+      <select id="reuse-mode">
+        <option value="new">New only ({{ reuse_counts.new }})</option>
+        <option value="previous">Previous only ({{ reuse_counts.previous }})</option>
+        <option value="all">Previous + New ({{ reuse_counts.all }})</option>
+      </select>
+    </label>
+    <button class="btn" data-reuse="clone" data-campaign="{{ campaign.id }}">Clone to new draft</button>
+    <button class="btn btn-primary" data-reuse="resend" data-campaign="{{ campaign.id }}">Resend this campaign</button>
+  </div>
+  <p id="reuse-status" class="muted"></p>
+</section>
+
+<section>
+  <h2>Content</h2>
+  <p class="muted">Rendered with sample merge tags and the unsubscribe footer. Links and the open pixel are not live in preview.</p>
+  <iframe class="preview-frame" title="Email preview" srcdoc="{{ preview_html|e }}"></iframe>
+</section>
+
+<section>
+  <h2>Recipients ({{ recipients|length }})</h2>
+  {% if recipients %}
+  <table class="table">
+    <thead>
+      <tr><th>Email</th><th>Status</th><th>Sent</th><th>Opened</th><th>Clicked</th></tr>
+    </thead>
+    <tbody>
+      {% for r in recipients %}
+      <tr>
+        <td>{{ r.contact.email or r.contact_id }}</td>
+        <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+        <td class="muted">{{ r.sent_at[:19].replace('T', ' ') if r.sent_at else '—' }}</td>
+        <td>{% if r.opened_at %}<span class="dot on"></span>{% else %}<span class="dot"></span>{% endif %}</td>
+        <td>{% if r.clicked_at %}<span class="dot on"></span>{% else %}<span class="dot"></span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No recipients attached.</p>
+  {% endif %}
+</section>
+{% endblock %}

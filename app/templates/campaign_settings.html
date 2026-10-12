@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Settings &middot; {{ campaign.name }}{% endblock %}
+{% macro info(key) -%}
+<button type="button" class="info-icon" data-info="{{ key }}" aria-label="More information">i</button>
+{%- endmacro %}
+{% block content %}
+<p><a class="link" href="{{ url_for('web.campaign_detail', campaign_id=campaign.id) }}">&larr; {{ campaign.name }}</a></p>
+<h1>Delivery settings</h1>
+<p class="muted">
+  Tune the send rate, stagger and the daily delivery window for this campaign.
+  Delivery only proceeds inside an open window. The send rate can only be
+  <strong>lowered</strong> here — the global rate in
+  <a class="link" href="{{ url_for('web.settings_page') }}">settings</a> is the
+  ceiling shared by all campaigns.
+</p>
+
+<form id="settings-form" class="form" data-campaign-id="{{ campaign.id }}">
+  <fieldset>
+    <legend>Pacing</legend>
+    <div class="grid-2">
+      <label>
+        Send rate (emails / minute) {{ info('send_rate_per_minute') }}
+        <input type="number" name="send_rate_per_minute" min="1" max="600"
+               value="{{ campaign.send_rate_per_minute if campaign.send_rate_per_minute else '' }}"
+               placeholder="inherit global">
+        <span class="preset-row">
+          <button type="button" class="chip" data-rate-preset="30">Safe 30</button>
+          <button type="button" class="chip" data-rate-preset="120">Balanced 120</button>
+          <button type="button" class="chip" data-rate-preset="600">Fast 600</button>
+        </span>
+      </label>
+      <label>
+        Batch size {{ info('default_batch_size') }}
+        <input type="number" name="batch_size" min="1" max="5000"
+               value="{{ campaign.batch_size }}">
+        <small class="muted">Recipients claimed per batch.</small>
+      </label>
+      <label>
+        Stagger jitter (seconds) {{ info('stagger_seconds') }}
+        <input type="number" name="stagger_seconds" min="0" max="86400"
+               value="{{ campaign.stagger_seconds }}">
+        <small class="muted">Random extra delay (0..N) added between batches.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Schedule</legend>
+    <div class="grid-2">
+      <label>
+        Start time <span class="muted">(leave blank to send on manual start)</span>
+        <input type="datetime-local" name="schedule_at"
+               value="{{ campaign.schedule_at[:16] if campaign.schedule_at else '' }}">
+      </label>
+      <label>
+        Window timezone {{ info('window') }}
+        <input type="text" name="window_timezone" maxlength="64"
+               value="{{ campaign.window_timezone or 'UTC' }}"
+               placeholder="UTC / America/New_York">
+      </label>
+      <label>
+        Window open (time of day)
+        <input type="time" name="window_start"
+               value="{{ campaign.window_start[:5] if campaign.window_start else '' }}">
+      </label>
+      <label>
+        Window close (time of day)
+        <input type="time" name="window_end"
+               value="{{ campaign.window_end[:5] if campaign.window_end else '' }}">
+      </label>
+    </div>
+    <small class="muted">If start &gt; close the window spans midnight (e.g. 22:00 &rarr; 06:00).</small>
+  </fieldset>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save settings</button>
+    <a class="btn" href="{{ url_for('web.campaign_detail', campaign_id=campaign.id) }}">Back</a>
+    <span id="form-status" class="muted"></span>
+  </div>
+</form>
+{% endblock %}

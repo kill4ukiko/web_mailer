@@ -1,0 +1,42 @@
+# Core web framework
+Flask==3.0.3
+
+# WSGI servers (gunicorn for POSIX; waitress for Windows local dev)
+gunicorn==21.2.0
+waitress==3.0.0
+
+# Async task queue
+celery==5.4.0
+redis==5.0.8
+
+# Database & auth (Supabase / PostgreSQL)
+supabase==2.32.0
+
+# Data ingestion (CSV / Excel import)
+pandas==2.2.2
+openpyxl==3.1.5
+
+# Delivery engine / HTTP
+requests==2.32.3
+
+# Deliverability diagnostics (SPF/DKIM/DMARC/MX lookups)
+dnspython==2.9.0
+
+# Validation & serialization
+pydantic==2.8.2
+pydantic-settings==2.4.0
+email-validator==2.2.0
+
+# Rate limiting & security
+Flask-Limiter==3.7.0
+Flask-WTF==1.2.1
+
+# Configuration
+python-dotenv==1.0.1
+
+# Database migrations (applies sql/*.sql via DATABASE_URL)
+psycopg2-binary==2.9.9
+
+# Testing
+pytest==8.3.2
+pytest-mock==3.14.0

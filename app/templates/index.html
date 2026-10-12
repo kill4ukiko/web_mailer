@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Dashboard &middot; webmailer{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<section class="cards">
+  <div class="card">
+    <span class="card-value">{{ totals.contacts }}</span>
+    <span class="card-label">Contacts</span>
+  </div>
+  <div class="card">
+    <span class="card-value">{{ totals.active }}</span>
+    <span class="card-label">Active</span>
+  </div>
+  <div class="card">
+    <span class="card-value">{{ totals.campaigns }}</span>
+    <span class="card-label">Campaigns</span>
+  </div>
+  <div class="card {% if totals.sending %}card-live{% endif %}">
+    <span class="card-value">{{ totals.sending }}</span>
+    <span class="card-label">Sending now</span>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Recent campaigns</h2>
+    <a class="btn" href="{{ url_for('web.campaign_new') }}">New campaign</a>
+  </div>
+  {% if campaigns %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Name</th><th>Subject</th><th>Status</th>
+        <th class="num">Sent</th><th class="num">Opens</th><th class="num">Clicks</th>
+        <th>Created</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in campaigns %}
+      <tr {% if loop.index > 5 %}data-see-more hidden{% endif %}>
+        <td>{{ c.name }}</td>
+        <td class="muted">{{ c.subject }}</td>
+        <td><span class="badge badge-{{ c.status }}">{{ c.status }}</span></td>
+        <td class="num">{{ c.stats.get('sent', 0) }}</td>
+        <td class="num">{{ c.stats.get('opens', 0) }}</td>
+        <td class="num">{{ c.stats.get('clicks', 0) }}</td>
+        <td class="muted">{{ c.created_at[:19].replace('T', ' ') if c.created_at else '' }}</td>
+        <td><a class="link" href="{{ url_for('web.campaign_detail', campaign_id=c.id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if campaigns|length > 5 %}
+  <p class="see-more-row"><button class="btn btn-ghost" data-see-more-toggle="campaigns">See all {{ campaigns|length }}</button></p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No campaigns yet. <a class="link" href="{{ url_for('web.campaign_new') }}">Create one</a>.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Campaign status</h2>
+  <div class="pill-row">
+    {% for status in status_order %}
+      <span class="badge badge-{{ status }}">{{ status }}: {{ status_counts.get(status, 0) }}</span>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Recent contacts</h2>
+    <a class="btn btn-ghost" href="{{ url_for('web.contacts_list') }}">All contacts</a>
+  </div>
+  {% if contacts %}
+  <table class="table">
+    <thead>
+      <tr><th>Email</th><th>Name</th><th>Status</th><th>Created</th></tr>
+    </thead>
+    <tbody>
+      {% for ct in contacts %}
+      <tr {% if loop.index > 5 %}data-see-more hidden{% endif %}>
+        <td>{{ ct.email }}</td>
+        <td>{{ (ct.first_name or '') ~ ' ' ~ (ct.last_name or '') }}</td>
+        <td><span class="badge badge-{{ ct.status }}">{{ ct.status }}</span></td>
+        <td class="muted">{{ ct.created_at[:19].replace('T', ' ') if ct.created_at else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No contacts yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

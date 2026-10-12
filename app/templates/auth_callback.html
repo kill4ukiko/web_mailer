@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Signing in &middot; webmailer{% endblock %}
+{% block content %}
+<section class="panel narrow">
+  <h1>Signing you in…</h1>
+  <p id="callback-status" class="muted">Verifying your magic link.</p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = {{ supabase_url|tojson }};
+  const SUPABASE_ANON_KEY = {{ supabase_anon_key|tojson }};
+  const NEXT_URL = {{ next_url|tojson }};
+  const statusEl = document.getElementById("callback-status");
+
+  async function exchange(token) {
+    if (!token) return false;
+    const resp = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: token, next: NEXT_URL }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      statusEl.textContent = "Signed in. Redirecting…";
+      window.location.replace(data.redirect || "/");
+      return true;
+    }
+    statusEl.textContent = data.error || "Sign-in failed.";
+    statusEl.className = "status error";
+    return false;
+  }
+
+  (async () => {
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { data } = await client.auth.getSession();
+    if (data && data.session && await exchange(data.session.access_token)) return;
+
+    // Fallback: wait briefly for the client to parse the URL fragment.
+    const { data: sub } = client.auth.onAuthStateChange(async (_event, session) => {
+      if (session && await exchange(session.access_token)) {
+        unsub.data.subscription.unsubscribe();
+      }
+    });
+    const { data: sub2 } = { data: { subscription: null } };
+    setTimeout(() => {
+      if (statusEl.textContent === "Verifying your magic link.") {
+        statusEl.textContent = "No sign-in token found. Please request a new link.";
+      }
+    }, 4000);
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+# Optional Apache config for cPanel / Passenger deployments.
+# Passenger (created by cPanel "Setup Python App") already routes requests to
+# passenger_wsgi.py and Flask serves /static itself, so no rewrite rules are
+# required. Everything below is opt-in.
+
+# --- Force HTTPS (recommended once your Public base URL uses https) ---
+# <IfModule mod_rewrite.c>
+#   RewriteEngine On
+#   RewriteCond %{HTTPS} !=on
+#   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+# </IfModule>
+
+# --- Cache static assets ---
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 7 days"
+  ExpiresByType application/javascript "access plus 7 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>

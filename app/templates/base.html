@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}webmailer{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">webmailer</div>
+    <nav>
+      <a href="{{ url_for('web.index') }}">Dashboard</a>
+      <a href="{{ url_for('web.contacts_list') }}">Contacts</a>
+      <a href="{{ url_for('web.campaign_new') }}">New campaign</a>
+      <a href="{{ url_for('web.deliverability_page') }}">Deliverability</a>
+      <a href="{{ url_for('web.settings_page') }}">Settings</a>
+      <a href="{{ url_for('web.about_page') }}">About</a>
+      <a href="/api/health" target="_blank" rel="noopener">API health</a>
+    </nav>
+    <div class="topbar-user">
+      {% if auth_user %}
+        <span class="muted" title="Signed in">{{ auth_user.email }}</span>
+        <button type="button" id="logout-btn" class="linklike">Log out</button>
+      {% elif auth_required %}
+        <a href="{{ url_for('auth.login_page') }}">Log in</a>
+      {% endif %}
+    </div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">webmailer</footer>
+
+  <div id="info-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close-info></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="info-title">
+      <div class="modal-head">
+        <h3 id="info-title"></h3>
+        <button type="button" class="modal-close" data-close-info aria-label="Close">&times;</button>
+      </div>
+      <div id="info-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}About &amp; setup &middot; webmailer{% endblock %}
+{% block content %}
+<h1>About &amp; setup</h1>
+<p class="muted">
+  webmailer sends bulk email through Brevo on top of Supabase (PostgreSQL),
+  with Celery (or cron) pacing delivery, deliverability diagnostics, and
+  Telegram alerts. This page shows your live configuration and how to wire up
+  each integration.
+</p>
+
+<h2>Configuration status</h2>
+<table class="table">
+  <tbody>
+    <tr><td>Supabase (database)</td>
+        <td>{% if info.supabase_configured %}<span class="badge badge-active">configured</span>{% else %}<span class="badge badge-cancelled">missing</span>{% endif %}</td></tr>
+    <tr><td>Supabase Auth (magic link)</td>
+        <td>{% if info.supabase_auth_configured %}<span class="badge badge-active">configured</span>{% else %}<span class="badge badge-cancelled">missing SUPABASE_ANON_KEY</span>{% endif %}</td></tr>
+    <tr><td>Brevo API</td>
+        <td>{% if info.brevo_configured %}<span class="badge badge-active">configured</span>{% else %}<span class="badge badge-cancelled">missing</span>{% endif %}</td></tr>
+    <tr><td>Brevo webhook token</td>
+        <td>{% if info.brevo_webhook_configured %}<span class="badge badge-active">configured</span>{% else %}<span class="badge badge-cancelled">missing</span>{% endif %}</td></tr>
+    <tr><td>Telegram alerts</td>
+        <td>{% if info.telegram_configured %}<span class="badge badge-active">configured</span>{% else %}<span class="badge badge-cancelled">missing</span>{% endif %}</td></tr>
+    <tr><td>Login protection</td>
+        <td>{% if info.auth_required %}<span class="badge badge-active">enabled</span> &middot; {{ info.auth_allowed_count }} email(s) allowed{% else %}<span class="badge badge-complained">disabled</span>{% endif %}</td></tr>
+    <tr><td>Sending engine</td><td>{{ info.send_mode }}</td></tr>
+    <tr><td>Public base URL</td><td><code>{{ info.public_base_url }}</code></td></tr>
+    <tr><td>Sender</td><td>{{ info.sender_name }} &lt;{{ info.sender_email }}&gt; ({{ info.sender_domain }})</td></tr>
+    <tr><td>Brevo plan</td><td>{{ info.brevo_plan }}</td></tr>
+  </tbody>
+</table>
+
+<h2>Quick start</h2>
+<ol class="about-steps">
+  <li><strong>Set environment variables.</strong> Copy <code>.env.example</code> to <code>.env</code> and fill in
+      the Supabase, Brevo and Telegram keys. Restart the app after changes.</li>
+  <li><strong>Apply migrations.</strong> Run
+      <code>python -m scripts.apply_sql</code> (or, on hosts without a terminal,
+      see the deployment section below).</li>
+  <li><strong>Configure the sender.</strong> Open <a class="link" href="{{ url_for('web.settings_page') }}">Settings</a>,
+      set the sender email/name and the public base URL, then save.</li>
+  <li><strong>Verify deliverability.</strong> Open
+      <a class="link" href="{{ url_for('web.deliverability_page') }}">Deliverability</a>
+      to check SPF / DKIM / DMARC and send a test email.</li>
+  <li><strong>Import contacts</strong> and create a list on the
+      <a class="link" href="{{ url_for('web.contacts_list') }}">Contacts</a> page,
+      then build a campaign from
+      <a class="link" href="{{ url_for('web.campaign_new') }}">New campaign</a>.</li>
+</ol>
+
+<h2>Brevo webhook (opens, clicks, bounces)</h2>
+<p class="muted">In Brevo go to <em>Transactional &rarr; Settings &rarr; Webhooks</em>, add a webhook for
+  the events you want and paste this URL (replace the token with the value of
+  <code>BREVO_WEBHOOK_SECRET</code> from your <code>.env</code>):</p>
+<pre class="code-block">{{ info.webhook_url }}</pre>
+<p class="muted">Events are attributed to campaigns via the <code>X-Mailin-custom</code>
+  header (<code>campaign=&hellip;;recipient=&hellip;</code>) that every send carries.
+  Without the token the webhook rejects the request.</p>
+
+<h2>Magic-link sign-in</h2>
+<p class="muted">Sign-in uses Supabase Auth from the browser. In the Supabase dashboard enable
+  <em>Email &rarr; Magic Link</em> and add <code>{{ info.public_base_url }}/auth/callback</code>
+  to the allowed redirect URLs. Only emails listed in <code>AUTH_ALLOWED_EMAILS</code>
+  (comma-separated) may sign in; an empty allowlist denies everyone.</p>
+
+<h2 id="deploy">Self-hosting (cPanel / no terminal)</h2>
+<p class="muted">On a cPanel host without SSH/Terminal the app runs under Passenger and uses
+  system <strong>cron</strong> instead of Celery:</p>
+<ol class="about-steps">
+  <li><strong>Setup Python App</strong> in cPanel: point the app root at this
+      repository and the startup file at <code>passenger_wsgi.py</code>, then use
+      <em>Run Pip Install</em> with <code>requirements.txt</code>.</li>
+  <li><strong>Create <code>.env</code></strong> via File Manager (or the app's
+      environment-variable UI) and set <code>SEND_MODE=cron</code>,
+      <code>RATELIMIT_STORAGE_URI=memory://</code>, and the Supabase/Brevo keys.</li>
+  <li><strong>Cron Jobs</strong>: add a one-off
+      <code>python -m app.cron bootstrap</code> to apply migrations and seed
+      settings, then a recurring job (every minute)
+      <code>python -m app.cron tick</code> to dispatch and send campaigns.</li>
+</ol>
+
+<h2>Operational notes</h2>
+<ul class="about-list">
+  <li>Sending is blocked while the public base URL is localhost &mdash; tracking
+      and unsubscribe links must be reachable by recipients.</li>
+  <li>Email content is sent as HTML with an auto-derived plain-text alternative.</li>
+  <li>Pause everything instantly with the kill switch on the Settings page.</li>
+  <li>Alerts (start, completion, progress, errors) are sent to Telegram when configured.</li>
+</ul>
+{% endblock %}

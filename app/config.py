@@ -1,0 +1,197 @@
+"""Application settings loaded from environment variables via Pydantic BaseSettings."""
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Typed settings sourced from environment / .env file."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
+
+    # Flask / application
+    flask_env: str = "development"
+    flask_app: str = "app:create_app"
+    secret_key: str = "change-me"
+    debug: bool = True
+    base_url: str = "http://localhost:5000"
+
+    # Supabase / PostgreSQL
+    supabase_url: str = "https://your-project-ref.supabase.co"
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""
+    database_url: str = ""
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+    celery_broker_url: str = "redis://localhost:6379/0"
+    celery_result_backend: str = "redis://localhost:6379/1"
+    ratelimit_storage_uri: str = "redis://localhost:6379/2"
+
+    # Brevo
+    brevo_api_key: str = ""
+    brevo_api_url: str = "https://api.brevo.com/v3"
+    brevo_webhook_secret: str = ""
+
+    # Telegram
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
+    # Sender defaults / deliverability
+    default_sender_email: str = "no-reply@yourdomain.com"
+    default_sender_name: str = "Your Company"
+    default_sender_domain: str = "yourdomain.com"
+    max_hard_bounce_rate: float = 0.020
+    max_complaint_rate: float = 0.001
+    # Extra domains (besides default_sender_domain) allowed in a campaign From.
+    allowed_sender_domains: list[str] = []
+
+    # Brevo plan (drives recommended defaults + guard limits)
+    brevo_plan: str = "free"
+
+    # Sending engine (global pacing + fair-share budget)
+    # When two campaigns' send schedules would collide, one is pushed forward by
+    # a random gap so they never transmit at the same instant.
+    collision_window_seconds: int = 5
+    cross_gap_min_seconds: int = 5
+    cross_gap_max_seconds: int = 20
+    # Max recipients a single worker task sends before re-queuing (keeps the
+    # worker responsive so active campaigns share the budget fairly).
+    max_sends_per_tick: int = 25
+
+    # Where operational alerts / test sends go (falls back to sender email).
+    operator_email: str | None = None
+    reply_to_email: str | None = None
+
+    # Public URL used for tracking + unsubscribe. When unset the app falls back
+    # to BASE_URL, but sending is blocked while that is a local/private URL.
+    public_base_url: str | None = None
+
+    # Authentication (Supabase magic link). Comma-separated allowlist. When the
+    # allowlist is empty every login is refused (fail closed). Set
+    # AUTH_REQUIRED=false only for local development. Use ``allowed_emails``
+    # for the parsed list.
+    auth_required: bool = True
+    auth_allowed_emails: str = ""
+
+    # Sending engine transport. "celery" uses the worker + beat schedule;
+    # "cron" is for hosts without Redis (e.g. cPanel) and is driven by
+    # ``python -m app.cron tick`` from a system cron job.
+    send_mode: str = "celery"
+
+    # Sending defaults (rate + hard caps). The rate is a global aggregate
+    # ceiling shared by all campaigns; per-campaign values may only lower it.
+    default_batch_size: int = 500
+    default_send_rate_per_minute: int = 120
+    default_max_recipients_per_hour: int = 2000
+    default_max_recipients_per_day: int = 8000
+    default_stagger_seconds: int = 0
+    default_window_start: str | None = None
+    default_window_end: str | None = None
+    default_window_timezone: str = "UTC"
+
+    # Legacy pacing knobs (kept for backward compatibility; no longer used for
+    # pacing decisions now that send_rate_per_minute drives delivery).
+    default_batch_interval_ms: int = 1000
+    default_throttle_rps: int = 50
+
+    @field_validator("auth_allowed_emails", mode="before")
+    @classmethod
+    def _join_emails(cls, value):
+        """Accept a JSON-ish list but store the raw comma-separated string."""
+        if isinstance(value, (list, tuple)):
+            return ",".join(str(v).strip() for v in value if str(v).strip())
+        return value or ""
+
+    @property
+    def allowed_emails(self) -> list[str]:
+        """Parsed, lower-cased allowlist (empty when unset)."""
+        raw = (self.auth_allowed_emails or "").replace(";", ",").replace("\n", ",")
+        return [part.strip().lower() for part in raw.split(",") if part.strip()]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return a cached Settings instance."""
+    return Settings()
+
+
+# --- Hard safety ceilings (never configurable above these) --------------- #
+# These exist so a fat-fingered setting can never turn the sender into a
+# cannon. The UI/schemas clamp to these regardless of user input.
+MAX_SEND_RATE_PER_MINUTE = 600
+MIN_SEND_RATE_PER_MINUTE = 1
+MAX_RECIPIENTS_PER_HOUR = 20000
+MAX_RECIPIENTS_PER_DAY = 100000
+MAX_BATCH_SIZE = 5000
+
+# Preset sending rates surfaced in the UI (emails per minute).
+SEND_RATE_PRESETS = {
+    "safe": 30,
+    "balanced": 120,
+    "fast": 600,
+}
+
+# --------------------------------------------------------------------------- #
+# Brevo plan presets.
+#
+# Each plan provides *recommended* defaults and *hard limits* used by the
+# settings guard:
+#   * *_default -> the recommended value (prefilled in the UI)
+#   * *_limit   -> the maximum the guard will accept; exceeding it is a hard
+#                  error (save blocked) with a reason, since it would risk the
+#                  provider's sending reputation.
+# The absolute safety ceilings in this module (MAX_*) still apply on top.
+# --------------------------------------------------------------------------- #
+BREVO_PLANS: dict[str, dict[str, int | str]] = {
+    "free": {
+        "label": "Free",
+        "rate": 30,
+        "rate_limit": 60,
+        "hourly_default": 100,
+        "hourly_limit": 300,
+        "daily_default": 250,
+        "daily_limit": 300,
+        "note": "Brevo free allows ~300 emails/day. Start low and warm up.",
+    },
+    "starter": {
+        "label": "Starter",
+        "rate": 60,
+        "rate_limit": 120,
+        "hourly_default": 500,
+        "hourly_limit": 1000,
+        "daily_default": 3000,
+        "daily_limit": 5000,
+        "note": "Entry paid plan. Keep daily volume within your purchased quota.",
+    },
+    "business": {
+        "label": "Business",
+        "rate": 120,
+        "rate_limit": 300,
+        "hourly_default": 2000,
+        "hourly_limit": 5000,
+        "daily_default": 15000,
+        "daily_limit": 40000,
+        "note": "Higher volume — watch your bounce/complaint rates closely.",
+    },
+    "enterprise": {
+        "label": "Enterprise",
+        "rate": 300,
+        "rate_limit": 600,
+        "hourly_default": 5000,
+        "hourly_limit": 20000,
+        "daily_default": 50000,
+        "daily_limit": 100000,
+        "note": "Maximum volume. Warm up gradually after any reputation event.",
+    },
+}
+
+DEFAULT_BREVO_PLAN = "free"
