@@ -55,6 +55,14 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
 
 ## Quick Start
 
+> **Windows, fresh computer:** run `setup-local.bat` once. It finds Python,
+> builds the virtualenv, installs `requirements.txt`, downloads the portable
+> tools (`Redis` for Windows + `cloudflared`) into `.tools\`, creates `.env`
+> from `.env.example`, applies the DB migrations and sets up the Cloudflare
+> named tunnel. It is idempotent and safe to re-run, and needs no Python
+> pre-installed beyond 3.10 (it will tell you what to install if missing).
+> Then skip to step 4.
+
 1. Create a virtual environment and install dependencies:
 
    ```bash
@@ -99,17 +107,14 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
 4. Start Redis (broker / cache / rate-limit storage).
 
 5. **Set a public base URL** so opens/clicks and one-click unsubscribe work.
-   In the app go to **Settings → Public base URL** and enter a URL the internet
-   can reach (for local dev, a Cloudflare quick tunnel works):
-
-   ```powershell
-   cloudflared tunnel --url http://127.0.0.1:5000
-   ```
-
-   Copy the printed `https://….trycloudflare.com` address into **Public base
-   URL**, then point the Brevo webhook at
-   `https://….trycloudflare.com/api/webhooks/brevo?token=YOUR_WEBHOOK_SECRET`
-   (see below). Sending is blocked until a public base URL is set.
+   The project ships a **Cloudflare named tunnel** for the stable host
+   `https://track.goprilad.com` (created by `setup-local.bat`). Make sure
+   **Settings → Public base URL** is `https://track.goprilad.com` and point the
+   Brevo webhook at
+   `https://track.goprilad.com/api/webhooks/brevo?token=YOUR_WEBHOOK_SECRET`
+   (see below). Sending is blocked until a public base URL is set. (For a
+   throwaway URL instead, `cloudflared tunnel --url http://127.0.0.1:5000`
+   prints a temporary `https://….trycloudflare.com` you can paste in.)
 
 6. Run the whole stack with one command (Windows):
 
@@ -118,8 +123,9 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
    ```
 
    This launches Redis (if not already running), the web/API server, the
-   Celery worker and Celery beat — each in its own window. Then open
-   <http://127.0.0.1:5000>. Close a component's window to stop it.
+   Celery worker, Celery beat and the Cloudflare tunnel — each in its own
+   window. Then open <http://127.0.0.1:5000>. Run `stop-local.bat` to stop
+   everything at once.
 
    To run the pieces individually instead (Windows uses waitress — note
    `--call`; the worker needs `--pool=solo`):

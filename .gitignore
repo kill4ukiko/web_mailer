@@ -8,6 +8,9 @@ env/
 .venv/
 venv/
 
+# Portable local tools (Redis, cloudflared) downloaded by setup-local
+.tools/
+
 # Environment configuration (secrets)
 .env
 
