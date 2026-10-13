@@ -182,6 +182,9 @@ try {
 # --- 5. Cloudflare named tunnel ------------------------------------------------
 if (-not $SkipTunnel) {
     Write-Step "Cloudflare tunnel ($PublicHost)"
+    # cloudflared writes progress to stderr; don't let that abort the script.
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
 
     if (-not (Test-Path -LiteralPath $CfExe)) { throw "cloudflared not found at $CfExe - re-run without -SkipTools." }
 
@@ -214,8 +217,7 @@ if (-not $SkipTunnel) {
     if (-not $tunnel) { throw "could not create/find tunnel '$TunnelName'." }
 
     Write-Host "   routing DNS $PublicHost -> tunnel '$TunnelName'"
-    $routeOutput = & $CfExe tunnel route dns $TunnelName $PublicHost 2>&1
-    $routeOutput | ForEach-Object { Write-Host "     $_" }
+    & $CfExe tunnel route dns $TunnelName $PublicHost
     if ($LASTEXITCODE -ne 0) { Write-Warn "DNS route returned non-zero (often harmless if the record already exists)." }
 
     $tunnelId = $tunnel.id
@@ -230,6 +232,7 @@ if (-not $SkipTunnel) {
     )
     [System.IO.File]::WriteAllText($CfConfig, ($cfg -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
     Write-Ok "wrote $CfConfig"
+    $ErrorActionPreference = $prevEAP
 }
 
 # --- Done ----------------------------------------------------------------------
