@@ -71,6 +71,7 @@ def register_blueprints(app: Flask) -> None:
     from app.api.lists import bp as lists_bp
     from app.api.preflight import bp as preflight_bp
     from app.api.settings import bp as settings_bp
+    from app.api.templates import bp as templates_bp
     from app.api.tracking import bp as tracking_bp
     from app.api.webhooks import bp as webhooks_bp
     from app.extensions import csrf
@@ -83,6 +84,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(settings_bp)
     app.register_blueprint(deliverability_bp)
     app.register_blueprint(lists_bp)
+    app.register_blueprint(templates_bp)
     app.register_blueprint(preflight_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(tracking_bp)

@@ -131,10 +131,12 @@ class FakeSupabase:
         self.lists: list[dict[str, Any]] = []
         self.list_memberships: list[dict[str, Any]] = []
         self.campaign_lists: list[dict[str, Any]] = []
+        self.templates: list[dict[str, Any]] = []
         self.recipient_cursor = 0
         self.campaign_cursor = 0
         self.contact_cursor = 0
         self.list_cursor = 0
+        self.template_cursor = 0
 
     # ----- client-table shim (used directly by some routes) -----
     class _Client:
@@ -158,6 +160,8 @@ class FakeSupabase:
                 return FakeClientTable(self._s.list_memberships)
             if name == "campaign_lists":
                 return FakeClientTable(self._s.campaign_lists)
+            if name == "email_templates":
+                return FakeClientTable(self._s.templates)
             raise KeyError(name)
 
         def rpc(self, name, params=None):
@@ -225,6 +229,18 @@ class FakeSupabase:
             return False
         self.recipients[:] = [r for r in self.recipients if r["contact_id"] != contact_id]
         return True
+
+    def delete_contacts(self, contact_ids):
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        before = len(self.contacts)
+        self.contacts[:] = [c for c in self.contacts if c["id"] not in ids]
+        self.recipients[:] = [r for r in self.recipients if r["contact_id"] not in ids]
+        self.list_memberships[:] = [
+            m for m in self.list_memberships if m["contact_id"] not in ids
+        ]
+        return before - len(self.contacts)
 
     def update_contact(self, contact_id, data):
         contact = next((c for c in self.contacts if c["id"] == contact_id), None)
@@ -463,6 +479,39 @@ class FakeSupabase:
                 c["last_name"] = None
                 cleaned += 1
         return cleaned
+
+    # ----- email templates -----
+    def list_templates(self):
+        return sorted(self.templates, key=lambda t: t.get("updated_at", ""), reverse=True)
+
+    def get_template(self, template_id):
+        return next((t for t in self.templates if t["id"] == template_id), None)
+
+    def create_template(self, name, subject, html_content, plain_text_content=None):
+        self.template_cursor += 1
+        row = {
+            "id": f"tpl{self.template_cursor}",
+            "name": name,
+            "subject": subject,
+            "html_content": html_content,
+            "plain_text_content": plain_text_content,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+        self.templates.append(row)
+        return row
+
+    def update_template(self, template_id, data):
+        entry = self.get_template(template_id)
+        if entry:
+            entry.update(data)
+            entry["updated_at"] = "2026-01-02T00:00:00Z"
+        return entry
+
+    def delete_template(self, template_id):
+        before = len(self.templates)
+        self.templates[:] = [t for t in self.templates if t["id"] != template_id]
+        return len(self.templates) != before
     def create_campaign(self, data):
         self.campaign_cursor += 1
         row = {

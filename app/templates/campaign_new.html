@@ -40,6 +40,20 @@
     </label>
   </div>
 
+  {% if templates %}
+  <div class="editor-head">
+    <label class="inline-row">
+      Load from template
+      <select id="template-select">
+        <option value="">Choose a template…</option>
+        {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <span class="muted">Fills the subject and body — you can still edit them.</span>
+  </div>
+  <script type="application/json" id="templates-data">{{ templates | tojson }}</script>
+  {% endif %}
+
   <div class="editor-head">
     <label class="checkbox">
       <input type="checkbox" id="rich-toggle"> Use rich text editor

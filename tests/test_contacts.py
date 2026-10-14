@@ -87,6 +87,35 @@ def test_commit_import_unknown_list_returns_404(client, supabase):
     assert resp.status_code == 404
 
 
+def test_bulk_delete_removes_selected_contacts(client, supabase):
+    a = _contact(supabase, "a@example.com")
+    b = _contact(supabase, "b@example.com")
+    c = _contact(supabase, "c@example.com")
+    resp = client.post("/api/contacts/bulk-delete", json={"ids": [a["id"], b["id"]]})
+    assert resp.status_code == 200
+    assert resp.get_json()["deleted"] == 2
+    assert supabase._contact_by_email("a@example.com") is None
+    assert supabase._contact_by_email("b@example.com") is None
+    assert supabase._contact_by_email("c@example.com") is not None
+
+
+def test_bulk_delete_cascades_list_membership(client, supabase):
+    contact = _contact(supabase, "member@example.com")
+    lst = client.post("/api/lists", json={
+        "name": "Temp", "contact_ids": [contact["id"]],
+    }).get_json()["list"]
+    assert len(supabase.list_members(lst["id"])) == 1
+
+    resp = client.post("/api/contacts/bulk-delete", json={"ids": [contact["id"]]})
+    assert resp.status_code == 200
+    assert supabase.list_members(lst["id"]) == []
+
+
+def test_bulk_delete_empty_ids_rejected(client, supabase):
+    resp = client.post("/api/contacts/bulk-delete", json={"ids": []})
+    assert resp.status_code == 422
+
+
 def test_campaign_extra_recipients_autocreate_contacts(client, supabase):
     resp = client.post("/api/campaigns", json={
         "name": "C",

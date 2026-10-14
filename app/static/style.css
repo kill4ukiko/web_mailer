@@ -337,6 +337,13 @@ legend {
 .see-more-row td { padding-top: 0; }
 [data-see-more] { margin-top: 10px; }
 
+/* --- Email template gallery --- */
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.panel-head h2 { margin: 0; }
+.panel + .panel { margin-top: 22px; }
+.preview-wrap { margin-top: 18px; }
+.preview-wrap h3 { margin: 0 0 10px; }
+
 /* --- Campaign content preview + reuse --- */
 .preview-frame {
   width: 100%;

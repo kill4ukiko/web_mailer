@@ -79,6 +79,7 @@ def campaign_new():
         global_defaults=_global_defaults(),
         lists=get_supabase().list_lists(),
         campaign_list_ids=[],
+        templates=get_supabase().list_templates(),
     )
 
 
@@ -100,6 +101,7 @@ def campaign_edit(campaign_id: str):
         global_defaults=_global_defaults(),
         lists=sb.list_lists(),
         campaign_list_ids=[entry["id"] for entry in sb.list_campaign_lists(campaign_id)],
+        templates=sb.list_templates(),
     )
 
 
@@ -107,6 +109,12 @@ def campaign_edit(campaign_id: str):
 def lists_page():
     """Lists now live on the Contacts hub."""
     return redirect(url_for("web.contacts_list"))
+
+
+@bp.get("/templates")
+def templates_page():
+    """Reusable email-template gallery (save / edit / preview / reuse)."""
+    return render_template("templates.html", templates=get_supabase().list_templates())
 
 
 @bp.get("/deliverability")

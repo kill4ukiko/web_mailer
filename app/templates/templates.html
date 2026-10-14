@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Templates &middot; webmailer{% endblock %}
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
+{% endblock %}
+{% block content %}
+<h1>Email templates</h1>
+<p class="muted">
+  Save reusable subject + body pairs, then load them into any campaign. Templates
+  do not send on their own — the email shell, unsubscribe link and tracking are
+  still added automatically when a campaign is sent.
+</p>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Templates</h2>
+    <button type="button" class="btn btn-sm" id="template-new-btn">New template</button>
+  </div>
+  <table class="table" id="templates-table">
+    <thead>
+      <tr><th>Name</th><th>Subject</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr data-template-id="{{ t.id }}">
+        <td>{{ t.name }}</td>
+        <td class="muted">{{ t.subject or '—' }}</td>
+        <td class="muted">{{ t.updated_at[:19] if t.updated_at else '' }}</td>
+        <td class="num">
+          <button type="button" class="btn btn-sm" data-template-edit="{{ t.id }}">Edit</button>
+          <button type="button" class="btn btn-sm btn-danger" data-template-delete="{{ t.id }}">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not templates %}
+      <tr><td colspan="4" class="muted">No templates yet. Create one below.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 id="template-editor-title">New template</h2>
+  </div>
+  <form id="template-form" class="form">
+    <input type="hidden" name="id" value="">
+    <div class="grid-2">
+      <label>
+        Template name
+        <input type="text" name="name" required maxlength="255" placeholder="October newsletter">
+      </label>
+      <label>
+        Default subject
+        <input type="text" name="subject" maxlength="255" placeholder="Your October update">
+      </label>
+    </div>
+
+    <div class="editor-head">
+      <label class="checkbox">
+        <input type="checkbox" id="template-rich-toggle"> Use rich text editor
+      </label>
+      <div class="merge-buttons">
+        <span class="muted">Insert:</span>
+        <button type="button" class="chip" data-merge="{{ '{{first_name}}' }}">first_name</button>
+        <button type="button" class="chip" data-merge="{{ '{{last_name}}' }}">last_name</button>
+        <button type="button" class="chip" data-merge="{{ '{{email}}' }}">email</button>
+        <button type="button" class="chip" data-merge="{{ '{{unsubscribe}}' }}">unsubscribe</button>
+        <button type="button" class="chip" id="template-link-btn">Insert link</button>
+      </div>
+    </div>
+
+    <div id="template-quill" class="quill-host" hidden></div>
+
+    <label id="template-html-label">
+      HTML content
+      <textarea name="html_content" id="template_html_content" rows="16" required
+        placeholder="<h1>Hello {{ '{{first_name}}' }}</h1>..."></textarea>
+      <small class="muted">
+        Leave the toggle off to edit full HTML directly (recommended for imported
+        templates). Turn it on for a simple rich-text editor. Merge tags:
+        {{ '{{first_name}}' }}, {{ '{{last_name}}' }}, {{ '{{email}}' }}, {{ '{{unsubscribe}}' }}.
+      </small>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" id="template-save-btn">Save template</button>
+      <button type="button" class="btn" id="template-preview-btn">Preview</button>
+      <button type="button" class="btn" id="template-reset-btn">Clear</button>
+      <span id="template-status" class="muted"></span>
+    </div>
+  </form>
+
+  <div id="template-preview" class="preview-wrap" hidden>
+    <h3>Preview</h3>
+    <iframe id="template-preview-frame" class="preview-frame" title="Template preview"></iframe>
+  </div>
+</section>
+
+<script type="application/json" id="templates-data">{{ templates | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+{% endblock %}

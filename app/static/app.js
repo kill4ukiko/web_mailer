@@ -269,6 +269,29 @@ function initCampaignEditor() {
     });
   });
 
+  const templateSelect = document.getElementById("template-select");
+  const templatesDataEl = document.getElementById("templates-data");
+  if (templateSelect && templatesDataEl) {
+    let tplCache = [];
+    try { tplCache = JSON.parse(templatesDataEl.textContent) || []; } catch (_) { tplCache = []; }
+    templateSelect.addEventListener("change", () => {
+      const entry = tplCache.find((t) => t.id === templateSelect.value);
+      if (!entry) return;
+      const hasContent = (toggle && toggle.checked && quill)
+        ? quill.getText().trim() : (textarea.value || "").trim();
+      if (hasContent &&
+          !window.confirm("Replace the current subject and body with this template?")) {
+        templateSelect.value = "";
+        return;
+      }
+      const subjectInput = form.querySelector("[name=subject]");
+      if (subjectInput && entry.subject) subjectInput.value = entry.subject;
+      const html = entry.html_content || "";
+      textarea.value = html;
+      if (toggle && toggle.checked && ensureQuill()) quill.clipboard.dangerouslyPasteHTML(html);
+    });
+  }
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const fd = new FormData(form);
@@ -622,6 +645,238 @@ function initContactsHub() {
         window.location.reload();
       } catch (err) {
         window.alert("Error: " + err.message);
+      }
+    });
+  }
+
+  const deleteSelectedBtn = document.getElementById("delete-selected-btn");
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.addEventListener("click", async () => {
+      const ids = selectedIds();
+      if (!ids.length) { window.alert("Select contacts first."); return; }
+      if (!window.confirm(
+        "Delete " + ids.length + " contact(s)?\n\n" +
+        "This removes them (and their list memberships and campaign recipient " +
+        "records) permanently. This cannot be undone.")) return;
+      deleteSelectedBtn.disabled = true;
+      try {
+        const result = await postJSON("/api/contacts/bulk-delete", { ids });
+        window.alert("Deleted " + result.deleted + " contact(s).");
+        window.location.reload();
+      } catch (err) {
+        window.alert("Error: " + err.message);
+        deleteSelectedBtn.disabled = false;
+      }
+    });
+  }
+}
+
+// ------------------------------------------------------------------ //
+// Email template gallery: save / edit / delete / preview / reuse
+// ------------------------------------------------------------------ //
+function initTemplates() {
+  const form = document.getElementById("template-form");
+  if (!form) return;
+
+  const table = document.getElementById("templates-table");
+  const idInput = form.querySelector("[name=id]");
+  const nameInput = form.querySelector("[name=name]");
+  const subjectInput = form.querySelector("[name=subject]");
+  const textarea = form.querySelector("[name=html_content]");
+  const toggle = document.getElementById("template-rich-toggle");
+  const quillHost = document.getElementById("template-quill");
+  const htmlLabel = document.getElementById("template-html-label");
+  const title = document.getElementById("template-editor-title");
+  const statusId = "template-status";
+  const previewWrap = document.getElementById("template-preview");
+  const previewFrame = document.getElementById("template-preview-frame");
+  let quill = null;
+
+  const dataEl = document.getElementById("templates-data");
+  let cache = [];
+  try { cache = JSON.parse(dataEl ? dataEl.textContent : "[]") || []; } catch (_) { cache = []; }
+
+  function ensureQuill() {
+    if (quill || !quillHost || typeof Quill === "undefined") return quill;
+    quill = new Quill(quillHost, {
+      theme: "snow",
+      modules: { toolbar: [
+        [{ header: [1, 2, 3, false] }],
+        ["bold", "italic", "underline", "strike"],
+        [{ list: "ordered" }, { list: "bullet" }],
+        ["blockquote", "link"],
+        [{ color: [] }, { background: [] }],
+        ["clean"],
+      ] },
+    });
+    quill.clipboard.dangerouslyPasteHTML(textarea.value || "");
+    return quill;
+  }
+
+  function currentHtml() {
+    if (toggle && toggle.checked && quill) return quill.root.innerHTML;
+    return textarea.value;
+  }
+
+  function setHtml(html) {
+    textarea.value = html || "";
+    if (quill) quill.clipboard.dangerouslyPasteHTML(html || "");
+  }
+
+  function resetForm() {
+    form.reset();
+    if (idInput) idInput.value = "";
+    if (title) title.textContent = "New template";
+    if (quill) quill.clipboard.dangerouslyPasteHTML("");
+    if (toggle) toggle.checked = false;
+    if (quillHost) quillHost.hidden = true;
+    if (htmlLabel) htmlLabel.hidden = false;
+    if (previewWrap) previewWrap.hidden = true;
+    setStatus(statusId, "", false);
+  }
+
+  function loadTemplate(id) {
+    const entry = cache.find((t) => t.id === id);
+    if (!entry) return;
+    if (idInput) idInput.value = entry.id;
+    if (nameInput) nameInput.value = entry.name || "";
+    if (subjectInput) subjectInput.value = entry.subject || "";
+    setHtml(entry.html_content || "");
+    if (title) title.textContent = "Edit template";
+    if (previewWrap) previewWrap.hidden = true;
+    setStatus(statusId, "Editing “" + (entry.name || "") + "”.", false);
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  if (toggle) {
+    toggle.addEventListener("change", () => {
+      if (toggle.checked) {
+        ensureQuill();
+        if (quill) quill.clipboard.dangerouslyPasteHTML(textarea.value || "");
+        quillHost.hidden = false;
+        htmlLabel.hidden = true;
+      } else {
+        if (quill) textarea.value = quill.root.innerHTML;
+        quillHost.hidden = true;
+        htmlLabel.hidden = false;
+      }
+    });
+  }
+
+  form.querySelectorAll("[data-merge]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tag = btn.dataset.merge;
+      if (toggle && toggle.checked && ensureQuill()) {
+        const range = quill.getSelection(true);
+        quill.insertText(range ? range.index : quill.getLength(), tag);
+      } else {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        textarea.value = textarea.value.slice(0, start) + tag + textarea.value.slice(end);
+        textarea.focus();
+        textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+      }
+    });
+  });
+
+  const linkBtn = document.getElementById("template-link-btn");
+  if (linkBtn) {
+    linkBtn.addEventListener("click", () => {
+      const url = window.prompt("Link URL (https://…):", "https://");
+      if (!url || !url.trim()) return;
+      const href = url.trim();
+      if (toggle && toggle.checked && ensureQuill()) {
+        const range = quill.getSelection(true) || { index: quill.getLength(), length: 0 };
+        if (!range.length) {
+          quill.insertText(range.index, href, "link", href);
+        } else {
+          quill.formatText(range.index, range.length, "link", href);
+        }
+      } else {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const selected = textarea.value.slice(start, end) || href;
+        const anchor = '<a href="' + escapeHtml(href) + '">' + escapeHtml(selected) + "</a>";
+        textarea.value = textarea.value.slice(0, start) + anchor + textarea.value.slice(end);
+        textarea.focus();
+        textarea.selectionStart = textarea.selectionEnd = start + anchor.length;
+      }
+    });
+  }
+
+  if (table) {
+    table.addEventListener("click", async (event) => {
+      const edit = event.target.closest("[data-template-edit]");
+      if (edit) { loadTemplate(edit.dataset.templateEdit); return; }
+      const del = event.target.closest("[data-template-delete]");
+      if (del) {
+        const id = del.dataset.templateDelete;
+        const row = del.closest("tr");
+        const label = row ? (row.querySelector("td") || {}).textContent : "this template";
+        if (!window.confirm("Delete template “" + label + "”? This cannot be undone.")) return;
+        del.disabled = true;
+        try {
+          await postJSON("/api/templates/" + id, null, "DELETE");
+          if (row) row.remove();
+          cache = cache.filter((t) => t.id !== id);
+          if (idInput && idInput.value === id) resetForm();
+        } catch (err) {
+          window.alert("Error: " + err.message);
+          del.disabled = false;
+        }
+      }
+    });
+  }
+
+  const newBtn = document.getElementById("template-new-btn");
+  if (newBtn) newBtn.addEventListener("click", () => { resetForm(); form.scrollIntoView({ behavior: "smooth" }); });
+  const resetBtn = document.getElementById("template-reset-btn");
+  if (resetBtn) resetBtn.addEventListener("click", resetForm);
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const html = currentHtml();
+    if (!html.trim()) { setStatus(statusId, "Template body is required.", true); return; }
+    const payload = {
+      name: (nameInput.value || "").trim(),
+      subject: (subjectInput.value || "").trim(),
+      html_content: html,
+      plain_text_content: stripHtml(html),
+    };
+    if (!payload.name) { setStatus(statusId, "Template name is required.", true); return; }
+    const btn = document.getElementById("template-save-btn");
+    if (btn) btn.disabled = true;
+    setStatus(statusId, "Saving...", false);
+    try {
+      const id = idInput.value;
+      const result = id
+        ? await postJSON("/api/templates/" + id, payload, "PATCH")
+        : await postJSON("/api/templates", payload);
+      const entry = result.template || {};
+      window.location.href = "/templates";
+      return entry;
+    } catch (err) {
+      setStatus(statusId, "Error: " + err.message, true);
+      if (btn) btn.disabled = false;
+    }
+  });
+
+  const previewBtn = document.getElementById("template-preview-btn");
+  if (previewBtn) {
+    previewBtn.addEventListener("click", async () => {
+      const html = currentHtml();
+      if (!html.trim()) { setStatus(statusId, "Nothing to preview.", true); return; }
+      previewBtn.disabled = true;
+      setStatus(statusId, "Rendering preview...", false);
+      try {
+        const result = await postJSON("/api/templates/preview", { html_content: html });
+        if (previewFrame) previewFrame.srcdoc = result.html || "";
+        if (previewWrap) previewWrap.hidden = false;
+        setStatus(statusId, "Preview rendered.", false);
+      } catch (err) {
+        setStatus(statusId, "Error: " + err.message, true);
+      } finally {
+        previewBtn.disabled = false;
       }
     });
   }
@@ -1218,6 +1473,7 @@ function initCleanupNames() {
 document.addEventListener("DOMContentLoaded", () => {
   initInfoModals();
   initCampaignEditor();
+  initTemplates();
   initSettingsForm();
   initGlobalSettingsForm();
   initSendTest();

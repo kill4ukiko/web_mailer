@@ -70,6 +70,17 @@ class SupabaseWrapper:
             {"status": status, "updated_at": "now()"}
         ).eq("email", email.lower().strip()).execute()
 
+    def delete_contacts(self, contact_ids: Iterable[str]) -> int:
+        """Delete several contacts by id; return how many rows were removed.
+
+        List memberships and campaign recipients cascade in the database.
+        """
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        result = self.client.table("contacts").delete().in_("id", ids).execute()
+        return len(result.data or [])
+
     def update_contact(self, contact_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         """Patch a single contact's editable fields."""
         payload = {k: v for k, v in data.items() if v is not None or k == "metadata"}
@@ -606,6 +617,72 @@ class SupabaseWrapper:
             .delete()
             .eq("campaign_id", campaign_id)
             .eq("list_id", list_id)
+            .execute()
+        )
+        return bool(result.data)
+
+    # ------------------------------------------------------------------ #
+    # Email templates
+    # ------------------------------------------------------------------ #
+    def list_templates(self) -> list[dict[str, Any]]:
+        return (
+            self.client.table("email_templates")
+            .select("*")
+            .order("updated_at", desc=True)
+            .execute()
+            .data
+            or []
+        )
+
+    def get_template(self, template_id: str) -> dict[str, Any] | None:
+        data = (
+            self.client.table("email_templates")
+            .select("*")
+            .eq("id", template_id)
+            .execute()
+            .data
+        )
+        return data[0] if data else None
+
+    def create_template(
+        self,
+        name: str,
+        subject: str,
+        html_content: str,
+        plain_text_content: str | None = None,
+    ) -> dict[str, Any]:
+        row = (
+            self.client.table("email_templates")
+            .insert({
+                "name": name,
+                "subject": subject,
+                "html_content": html_content,
+                "plain_text_content": plain_text_content,
+            })
+            .execute()
+            .data
+        )
+        if not row:
+            raise SupabaseClientError("email_template insert returned no row")
+        return row[0]
+
+    def update_template(
+        self, template_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        row = (
+            self.client.table("email_templates")
+            .update({**data, "updated_at": "now()"})
+            .eq("id", template_id)
+            .execute()
+            .data
+        )
+        return row[0] if row else None
+
+    def delete_template(self, template_id: str) -> bool:
+        result = (
+            self.client.table("email_templates")
+            .delete()
+            .eq("id", template_id)
             .execute()
         )
         return bool(result.data)

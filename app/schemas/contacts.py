@@ -46,6 +46,12 @@ class ContactUpdate(BaseModel):
     metadata: dict | None = None
 
 
+class ContactBulkDelete(BaseModel):
+    """Delete several contacts by id in one request."""
+
+    ids: list[str] = Field(min_length=1)
+
+
 class ImportRow(BaseModel):
     """One staged, already-mapped contact row awaiting commit."""
 

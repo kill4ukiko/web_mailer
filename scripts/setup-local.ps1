@@ -175,6 +175,9 @@ Push-Location $RepoRoot
 try {
     & $VenvPy -m app.cron bootstrap
     if ($LASTEXITCODE -ne 0) { Write-Warn 'bootstrap returned a non-zero exit code - check the output above.' }
+    # Seed the starter email templates (idempotent by name).
+    & $VenvPy -m scripts.seed_templates
+    if ($LASTEXITCODE -ne 0) { Write-Warn 'template seeding returned a non-zero exit code.' }
 } finally {
     Pop-Location
 }

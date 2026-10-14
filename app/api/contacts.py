@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app.core.supabase_client import get_supabase
 from app.schemas.contacts import (
+    ContactBulkDelete,
     ContactCreate,
     ContactStatusUpdate,
     ContactUpdate,
@@ -306,3 +307,22 @@ def delete_contact(contact_id: str):
     if not deleted:
         return jsonify({"error": "contact not found"}), 404
     return jsonify({"deleted": contact_id}), 200
+
+
+@bp.post("/bulk-delete")
+def bulk_delete_contacts():
+    """POST /api/contacts/bulk-delete  {ids: [...]} — remove several contacts.
+
+    List memberships and campaign recipients cascade in the database.
+    """
+    try:
+        payload = ContactBulkDelete.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"error": exc.errors(include_url=False)}), 422
+
+    ids = [cid for cid in payload.ids if cid]
+    if not ids:
+        return jsonify({"error": "no contact ids provided"}), 400
+
+    deleted = get_supabase().delete_contacts(ids)
+    return jsonify({"deleted": deleted}), 200
