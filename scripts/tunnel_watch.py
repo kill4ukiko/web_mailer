@@ -19,10 +19,16 @@ import argparse
 import logging
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# Running `python scripts\tunnel_watch.py` puts scripts\ on sys.path, so the
+# repo root must be added explicitly for `import app...` to resolve.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 DEFAULT_HEALTH_URL = os.environ.get(
     "TUNNEL_HEALTH_URL", "https://track.goprilad.com/api/health"
 )
@@ -78,15 +84,17 @@ def _transition(previous: bool | None, current: bool) -> str | None:
 
 
 def _start_cloudflared(log_file) -> subprocess.Popen:
+    # NOTE: --config/--no-autoupdate/--loglevel are *tunnel* options, so they
+    # must come before the `run` subcommand (cloudflared rejects them after it).
     cmd = [
         str(_cloudflared()),
         "tunnel",
         "--config",
         str(_config()),
-        "run",
         "--no-autoupdate",
         "--loglevel",
         "info",
+        "run",
     ]
     return subprocess.Popen(
         cmd, cwd=str(ROOT), stdout=log_file, stderr=subprocess.STDOUT
@@ -114,6 +122,7 @@ def watch(
     backoff = 1.0
     healthy: bool | None = None
     last_probe = 0.0
+    proc: subprocess.Popen | None = None
     try:
         while True:
             with log_path.open("a", encoding="utf-8") as log_file:
@@ -153,6 +162,13 @@ def watch(
             backoff = 1.0 if uptime >= 60 else min(max_backoff, backoff * 2)
             time.sleep(backoff)
     except KeyboardInterrupt:
+        if proc is not None and proc.poll() is None:
+            logger.info("stopping cloudflared (pid=%s)", proc.pid)
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
         _notify("Tunnel stopped", ["Supervisor interrupted; stopping cloudflared."], "warning")
         return 0
 
