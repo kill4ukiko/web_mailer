@@ -81,6 +81,11 @@ def _default_beat_schedule() -> dict:
             "schedule": 120.0,  # every 2 minutes
             "options": {"queue": "celery"},
         },
+        "resume-held-campaigns": {
+            "task": "app.workers.tasks_campaign.resume_held_campaigns",
+            "schedule": 60.0,  # every minute (cap boundary hand-back)
+            "options": {"queue": "celery"},
+        },
         "campaign-progress-alerts": {
             "task": "app.workers.tasks_campaign.campaign_progress_alerts",
             "schedule": 900.0,  # every 15 minutes

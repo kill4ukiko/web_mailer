@@ -12,7 +12,7 @@ from app.core.supabase_client import get_supabase
 
 bp = Blueprint("web", __name__)
 
-_STATUS_ORDER = ["draft", "scheduled", "sending", "paused", "completed", "cancelled"]
+_STATUS_ORDER = ["draft", "scheduled", "sending", "held", "paused", "completed", "cancelled"]
 
 
 def _global_defaults() -> dict:

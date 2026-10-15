@@ -564,6 +564,21 @@ class FakeSupabase:
     def list_sending_campaigns(self):
         return [c for c in self.campaigns if c["status"] == "sending"]
 
+    def list_held_campaigns(self):
+        return [c for c in self.campaigns if c["status"] == "held"]
+
+    def list_engagement_campaigns(self, hours=24):
+        from datetime import datetime, timedelta, timezone
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        out = []
+        for c in self.campaigns:
+            if c["status"] == "sending":
+                out.append(c)
+            elif c["status"] == "completed" and str(c.get("finished_at") or "") >= since:
+                out.append(c)
+        return out
+
     def set_priority(self, campaign_id, priority):
         campaign = self.get_campaign(campaign_id)
         if campaign:

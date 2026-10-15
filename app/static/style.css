@@ -86,6 +86,7 @@ a.link:hover { text-decoration: underline; }
 .badge-draft, .badge-scheduled { color: #aab3d6; }
 .badge-sending, .badge-active { color: var(--ok); border-color: var(--ok); }
 .badge-paused { color: var(--warn); border-color: var(--warn); }
+.badge-held { color: var(--warn); border-color: var(--warn); border-style: dashed; }
 .badge-priority { background: var(--warn); border-color: var(--warn); color: #1a1a1a; }
 .badge-completed { color: var(--accent); border-color: var(--accent); }
 .badge-cancelled, .badge-bounced_hard, .badge-bounced_soft, .badge-invalid, .badge-complained, .badge-unsubscribed { color: var(--danger); border-color: var(--danger); }

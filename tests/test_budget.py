@@ -53,26 +53,39 @@ def test_seconds_until_reset_is_bounded():
 def test_remaining_global_reports_headroom(supabase):
     campaign = _sending(supabase, "a")
     _mark_sent(supabase, campaign["id"], 40)
-    headroom, retry = remaining_global(supabase, _settings())
+    headroom, retry, reason = remaining_global(supabase, _settings())
     assert headroom == 60  # 100 hourly - 40 already sent
     assert retry == CAP_RETRY_SECONDS
+    assert reason is None
 
 
 def test_remaining_global_exhausted_returns_reset_delay(supabase):
     campaign = _sending(supabase, "a")
     _mark_sent(supabase, campaign["id"], 100)
-    headroom, retry = remaining_global(supabase, _settings())
+    headroom, retry, reason = remaining_global(supabase, _settings())
     assert headroom == 0
     assert 1 <= retry <= 3600
+    assert reason == "hour"
+
+
+def test_remaining_global_daily_cap_reason(supabase):
+    campaign = _sending(supabase, "a")
+    _mark_sent(supabase, campaign["id"], 10)
+    settings = _settings(max_recipients_per_day=10)
+    headroom, retry, reason = remaining_global(supabase, settings)
+    assert headroom == 0
+    assert 1 <= retry <= 86400
+    assert reason == "day"
 
 
 def test_tick_budgets_split_equally(supabase):
     a = _sending(supabase, "a")
     b = _sending(supabase, "b")
-    budgets, retry = tick_budgets(supabase, _settings(), batch_size=500)
+    budgets, retry, reason = tick_budgets(supabase, _settings(), batch_size=500)
     assert budgets[a["id"]] == 50
     assert budgets[b["id"]] == 50
     assert retry == CAP_RETRY_SECONDS
+    assert reason is None
 
 
 def test_high_priority_takes_everything(supabase):
@@ -80,23 +93,26 @@ def test_high_priority_takes_everything(supabase):
     b = _sending(supabase, "b")
     supabase.set_priority(b["id"], "high")
 
-    budgets, retry = tick_budgets(supabase, _settings(), batch_size=500)
+    budgets, retry, reason = tick_budgets(supabase, _settings(), batch_size=500)
     assert budgets[b["id"]] == 100
     assert budgets.get(a["id"], 0) == 0
     assert retry == 30
+    assert reason == "priority"
 
 
 def test_no_active_campaigns_yields_empty(supabase):
-    budgets, _ = tick_budgets(supabase, _settings(), batch_size=500)
+    budgets, _retry, reason = tick_budgets(supabase, _settings(), batch_size=500)
     assert budgets == {}
+    assert reason is None
 
 
 def test_exhausted_cap_defers_everyone(supabase):
     a = _sending(supabase, "a")
     _mark_sent(supabase, a["id"], 100)
-    budgets, retry = tick_budgets(supabase, _settings(), batch_size=500)
+    budgets, retry, reason = tick_budgets(supabase, _settings(), batch_size=500)
     assert budgets == {}
     assert retry >= 1
+    assert reason == "hour"
 
 
 def test_high_priority_helper_picks_the_marked_campaign():

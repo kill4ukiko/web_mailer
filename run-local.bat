@@ -65,15 +65,15 @@ rem ---- 4. Celery beat -------------------------------------------------
 echo Starting Celery beat...
 start "Beat" /min "%CELERY%" -A app.workers.celery_app:celery beat --loglevel=info
 
-rem ---- 5. Cloudflare tunnel -------------------------------------------
+rem ---- 5. Cloudflare tunnel (supervised) ------------------------------
 if not exist "%CLOUDFLARED%" (
   echo WARNING: cloudflared not found. Run setup-local.bat for a public URL.
 ) else (
   if not exist "%CF_CONFIG%" (
     echo WARNING: %CF_CONFIG% missing ^(run setup-local.bat^). Skipping tunnel.
   ) else (
-    echo Starting Cloudflare tunnel ^(%PUBLIC_URL%^) ...
-    start "Tunnel" /min "%CLOUDFLARED%" tunnel --config "%CF_CONFIG%" run
+    echo Starting Cloudflare tunnel supervisor ^(%PUBLIC_URL%^) ...
+    start "Tunnel" /min "%PY%\python.exe" "%~dp0scripts\tunnel_watch.py"
   )
 )
 

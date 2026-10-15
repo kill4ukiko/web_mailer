@@ -112,7 +112,10 @@ def test_worker_defers_when_hourly_cap_reached(supabase, monkeypatch):
 
     monkeypatch.setattr(send_campaign, "apply_async", lambda *a, **k: None)
     result = send_campaign.run(campaign["id"])
-    assert result["status"] == "deferred"
+    assert result["status"] == "held"
+    held = supabase.get_campaign(campaign["id"])
+    assert held["status"] == "held"
+    assert held["held_reason"] == "hour"
 
 
 def test_worker_sends_when_under_caps(supabase, monkeypatch):

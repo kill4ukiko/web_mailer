@@ -286,6 +286,42 @@ class SupabaseWrapper:
         )
         return data or []
 
+    def list_held_campaigns(self) -> list[dict[str, Any]]:
+        """Campaigns paused by an exhausted send cap (awaiting reset)."""
+        data = (
+            self.client.table("campaigns")
+            .select("*")
+            .eq("status", "held")
+            .execute()
+            .data
+        )
+        return data or []
+
+    def list_engagement_campaigns(self, hours: int = 24) -> list[dict[str, Any]]:
+        """Sending campaigns plus those finished within the last ``hours``.
+
+        Opens/clicks frequently arrive after a campaign completes, so engagement
+        digests must keep watching recently finished campaigns too.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        rows = (
+            self.client.table("campaigns")
+            .select("*")
+            .in_("status", ["sending", "completed"])
+            .execute()
+            .data
+            or []
+        )
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if row.get("status") == "sending":
+                out.append(row)
+            elif str(row.get("finished_at") or "") >= since:
+                out.append(row)
+        return out
+
     def set_priority(self, campaign_id: str, priority: str) -> dict[str, Any] | None:
         """Set a campaign's priority ('normal' | 'high')."""
         row = (

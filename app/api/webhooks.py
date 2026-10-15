@@ -146,9 +146,27 @@ def brevo_webhook():
         if event.event in ("hard_bounce", "complaint", "unsubscribe"):
             supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP[event.event])
 
+        if event.event == "unsubscribe":
+            _notify_unsubscribe(supabase, event)
+
         processed += 1
 
     return jsonify({"received": True, "processed": processed, "errors": errors}), 200
+
+
+def _notify_unsubscribe(supabase, event: BrevoEvent) -> None:
+    """Alert the operator immediately on a webhook-reported unsubscribe."""
+    try:
+        from app.core.notifications import notify_campaign
+
+        campaign = (
+            supabase.get_campaign(event.campaign_id)
+            if event.campaign_id
+            else {"id": event.campaign_id}
+        ) or {"id": event.campaign_id}
+        notify_campaign(campaign, "unsubscribed", [f"Email: {event.email}"])
+    except Exception:  # noqa: BLE001 - notifications must never break the webhook
+        pass
 
 
 def _parse_custom(value: str | None) -> dict[str, str]:

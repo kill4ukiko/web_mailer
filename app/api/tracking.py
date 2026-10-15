@@ -96,6 +96,18 @@ def _apply_unsubscribe(campaign_id: str | None, recipient_id: str | None) -> Non
             user_agent=request.headers.get("User-Agent"),
         )
         supabase.increment_stats(campaign_id, "complaints")
+        _notify_unsubscribe(supabase, campaign_id, recipient_id)
+
+
+def _notify_unsubscribe(supabase, campaign_id: str, recipient_id: str) -> None:
+    """Alert the operator immediately when someone unsubscribes (never raises)."""
+    try:
+        from app.core.notifications import notify_campaign
+
+        campaign = supabase.get_campaign(campaign_id) or {"id": campaign_id}
+        notify_campaign(campaign, "unsubscribed", [f"Recipient: `{recipient_id}`"])
+    except Exception:  # noqa: BLE001 - notifications must never break tracking
+        pass
 
 
 def _parse_post_body(body: str) -> str:

@@ -10,7 +10,7 @@
     <a class="btn" href="{{ url_for('web.campaign_edit', campaign_id=campaign.id) }}">Edit campaign</a>
   {% endif %}
   <a class="btn" href="{{ url_for('web.campaign_settings', campaign_id=campaign.id) }}">Delivery settings</a>
-  {% if campaign.status != 'sending' %}
+  {% if campaign.status not in ('sending', 'held') %}
     <button class="btn btn-danger" data-delete-campaign="{{ campaign.id }}">Delete campaign</button>
   {% endif %}
 </p>
@@ -39,7 +39,7 @@
       <button class="btn btn-danger" data-action="cancel" data-campaign="{{ campaign.id }}">Cancel</button>
     {% endif %}
     {% if campaign.status not in ('completed', 'cancelled') %}
-      {% if campaign.status in ('draft', 'scheduled', 'sending') %}
+      {% if campaign.status in ('draft', 'scheduled', 'sending', 'held') %}
         <button class="btn btn-danger" data-action="cancel" data-campaign="{{ campaign.id }}">Cancel</button>
       {% endif %}
       <button class="btn" data-priority-toggle="{{ campaign.id }}"
@@ -50,6 +50,10 @@
     <span class="muted">Circuit breaker: <strong>{{ campaign.circuit_state }}</strong></span>
   </div>
   <p id="action-status" class="muted"></p>
+  {% if campaign.status == 'held' %}
+  <p class="muted">On hold: the {{ campaign.held_reason or 'send' }}-limit was reached. It resumes
+    automatically {% if campaign.held_until %}around {{ campaign.held_until[:16].replace('T', ' ') }} UTC{% else %}at the next reset{% endif %}.</p>
+  {% endif %}
 </section>
 
 <section>

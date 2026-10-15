@@ -7,7 +7,8 @@ nothing and simply wait — their status is left untouched, so they resume
 automatically once the priority campaign finishes.
 
 When a cap is exhausted the caller is told how long to wait (until the hour or
-day boundary) so the campaign can sleep and retry rather than spin.
+day boundary) *and which* cap was hit, so it can mark the campaign as *held*
+until the reset instead of spinning.
 """
 from __future__ import annotations
 
@@ -32,12 +33,14 @@ def _iso(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
 
 
-def remaining_global(supabase, settings: dict[str, Any]) -> tuple[int, int]:
-    """Return ``(headroom, retry_seconds)`` for the global hourly/daily caps.
+def remaining_global(supabase, settings: dict[str, Any]) -> tuple[int, int, str | None]:
+    """Return ``(headroom, retry_seconds, reason)`` for the global caps.
 
     ``headroom`` is the number of sends still permitted this instant across all
-    campaigns. When exhausted, ``retry_seconds`` is the delay until the binding
-    limit resets; otherwise it is a short poll interval.
+    campaigns. When a cap is exhausted ``headroom`` is 0, ``retry_seconds`` is
+    the wait until that boundary, and ``reason`` is ``"day"`` / ``"hour"`` so the
+    caller can mark the campaign as *held* rather than merely deferred. On a
+    healthy budget ``reason`` is ``None``.
     """
     now = datetime.now(timezone.utc)
     hour_ago = now.timestamp() - 3600
@@ -54,13 +57,13 @@ def remaining_global(supabase, settings: dict[str, Any]) -> tuple[int, int]:
         if daily_cap > 0:
             day_headroom = daily_cap - supabase.count_sent_since(_iso(day_start))
     except Exception:  # noqa: BLE001 - never let cap counting block delivery
-        return _UNLIMITED, CAP_RETRY_SECONDS
+        return _UNLIMITED, CAP_RETRY_SECONDS, None
 
     if day_headroom <= 0:
-        return 0, seconds_until_reset("day")
+        return 0, seconds_until_reset("day"), "day"
     if hour_headroom <= 0:
-        return 0, seconds_until_reset("hour")
-    return min(hour_headroom, day_headroom), CAP_RETRY_SECONDS
+        return 0, seconds_until_reset("hour"), "hour"
+    return min(hour_headroom, day_headroom), CAP_RETRY_SECONDS, None
 
 
 def high_priority_campaign(campaigns: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -73,27 +76,29 @@ def high_priority_campaign(campaigns: list[dict[str, Any]]) -> dict[str, Any] | 
 
 def tick_budgets(
     supabase, settings: dict[str, Any], batch_size: int
-) -> tuple[dict[str, int], int]:
-    """Return ``({campaign_id: allowance}, retry_seconds)`` for the current tick.
+) -> tuple[dict[str, int], int, str | None]:
+    """Return ``({campaign_id: allowance}, retry_seconds, reason)`` for this tick.
 
     The allowance is how many recipients each active campaign may claim now.
     Campaigns absent from the map (or mapped to 0) should defer this tick.
+    ``reason`` is ``"day"`` / ``"hour"`` when a global cap is exhausted, or
+    ``"priority"`` when another campaign holds high priority, otherwise ``None``.
     """
     active = supabase.list_sending_campaigns()
     if not active:
-        return {}, CAP_RETRY_SECONDS
+        return {}, CAP_RETRY_SECONDS, None
 
-    headroom, retry = remaining_global(supabase, settings)
+    headroom, retry, reason = remaining_global(supabase, settings)
     if headroom <= 0:
-        return {}, retry
+        return {}, retry, reason
 
     high = high_priority_campaign(active)
     if high is not None:
         # Priority campaign takes everything; others implicitly get 0 and
         # should re-check soon (a priority run can finish at any moment).
-        return {high["id"]: min(headroom, batch_size)}, 30
+        return {high["id"]: min(headroom, batch_size)}, 30, "priority"
 
     share = max(1, headroom // len(active))
     return {
         campaign["id"]: min(share, batch_size) for campaign in active
-    }, CAP_RETRY_SECONDS
+    }, CAP_RETRY_SECONDS, None

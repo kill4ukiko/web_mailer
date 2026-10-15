@@ -53,7 +53,7 @@ def tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
 
     from app.core import killswitch
     from app.core.supabase_client import get_supabase
-    from app.workers.tasks_campaign import _promote_due, _send_once
+    from app.workers.tasks_campaign import _flip_held_to_sending, _promote_due, _send_once
 
     logger = logging.getLogger("app.cron")
     supabase = get_supabase()
@@ -62,7 +62,10 @@ def tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
 
     cycles = 0
     completed: list[str] = []
+    resumed_held: list[str] = []
     if not killswitch.is_paused():
+        # Bring back any campaigns held by a since-reset hourly/daily cap.
+        resumed_held, _held_completed = _flip_held_to_sending(supabase)
         deadline = _time.monotonic() + max(1.0, budget_seconds)
         while _time.monotonic() < deadline:
             sending = supabase.list_sending_campaigns()
@@ -94,6 +97,7 @@ def tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
         "failed": failed,
         "cycles": cycles,
         "completed": completed,
+        "resumed_held": resumed_held,
     }
 
 

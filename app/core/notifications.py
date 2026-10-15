@@ -45,8 +45,10 @@ def notify_campaign(campaign: dict, event: str, extra: list[str] | None = None) 
         "progress": "info",
         "completed": "success",
         "paused": "warning",
+        "held": "warning",
         "failed": "error",
         "cancelled": "warning",
+        "unsubscribed": "warning",
     }
     name = campaign.get("name") or campaign.get("id")
     lines = [

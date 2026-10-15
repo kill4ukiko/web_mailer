@@ -89,11 +89,15 @@ def _send_once(campaign_id: str) -> dict:
         campaign.get("batch_size") or settings.get("default_batch_size") or 500,
         MAX_BATCH_SIZE,
     )
-    budgets, retry = tick_budgets(supabase, settings, batch_size)
+    budgets, retry, reason = tick_budgets(supabase, settings, batch_size)
     allowance = budgets.get(campaign_id, 0)
     if allowance <= 0:
-        # Either the global caps are exhausted (retry at reset) or another
-        # campaign holds high priority (retry shortly). Either way: sleep.
+        if reason in ("day", "hour"):
+            # A global send cap is exhausted: hold the campaign until it resets
+            # instead of idling invisibly in "sending".
+            _hold_campaign(supabase, campaign, reason, retry)
+            return {"campaign_id": campaign_id, "status": "held", "requeue_in": retry}
+        # Another campaign holds high priority: sleep briefly and re-check.
         return {"campaign_id": campaign_id, "status": "deferred", "requeue_in": retry}
 
     effective_rate = _effective_rate(campaign, settings, config)
@@ -210,6 +214,43 @@ def _effective_rate(campaign: dict, settings: dict, config) -> int:
     return max(1, min(int(rate), global_rate, MAX_SEND_RATE_PER_MINUTE))
 
 
+def _cap_usage(supabase, reason: str) -> int:
+    """Recipients already sent inside the current cap window (best effort)."""
+    from datetime import datetime, timezone
+
+    from app.core.budget import _iso
+
+    now = datetime.now(timezone.utc)
+    if reason == "hour":
+        start = now.timestamp() - (now.minute * 60 + now.second)
+    else:
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    try:
+        return supabase.count_sent_since(_iso(start))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _hold_campaign(supabase, campaign: dict, reason: str, resets_in: int) -> None:
+    """Mark a campaign ``held`` until an exhausted global cap resets + alert."""
+    from datetime import datetime, timedelta, timezone
+
+    until = (datetime.now(timezone.utc) + timedelta(seconds=max(1, resets_in))).isoformat()
+    supabase.update_campaign(campaign["id"], {
+        "status": "held",
+        "held_reason": reason,
+        "held_until": until,
+    })
+    try:
+        from app.core.alerts import cap_hold
+
+        settings = effective_settings(supabase)
+        cap = int(settings.get(f"max_recipients_per_{reason}") or 0)
+        cap_hold(reason, sent=_cap_usage(supabase, reason), cap=cap, resets_in=resets_in)
+    except Exception as exc:  # noqa: BLE001 - alerts must never break the loop
+        logger.warning("hold notification failed: %s", exc)
+
+
 def _requeue(campaign_id: str, countdown: int) -> None:
     send_campaign.apply_async(args=[campaign_id], countdown=max(1, countdown))
 
@@ -247,16 +288,18 @@ def _complete_campaign(supabase, campaign_id: str) -> None:
 
 @celery.task(name="app.workers.tasks_campaign.campaign_progress_alerts")
 def campaign_progress_alerts() -> dict:
-    """Periodically report in-flight campaign progress (sent/opens/clicks).
+    """Periodically report engagement (sent/opens/clicks) per campaign.
 
-    Driven by Celery Beat. Only sends a Telegram alert when a campaign's totals
-    changed since the last alert (tracked in Redis) so a long send doesn't spam
-    the chat with identical messages.
+    Driven by Celery Beat. Covers in-flight campaigns *and* ones finished within
+    the last day, since opens/clicks usually arrive after completion. Only sends
+    a Telegram alert when a campaign's totals changed since the last alert
+    (tracked in Redis) so a long send doesn't spam the chat with identical
+    messages. Unsubscribes are alerted immediately elsewhere (tracking/webhooks).
     """
     from app.core.supabase_client import get_supabase
 
     supabase = get_supabase()
-    sending = supabase.list_sending_campaigns()
+    campaigns = supabase.list_engagement_campaigns()
     notified: list[str] = []
 
     try:
@@ -268,7 +311,7 @@ def campaign_progress_alerts() -> dict:
 
     from app.core.notifications import notify_campaign
 
-    for campaign in sending:
+    for campaign in campaigns:
         campaign_id = campaign["id"]
         stats = campaign.get("stats") or {}
         snapshot = (
@@ -366,3 +409,63 @@ def resume_sending() -> dict:
             send_campaign.apply_async(args=[campaign["id"]], countdown=1)
             resumed.append(campaign["id"])
     return {"resumed": resumed}
+
+
+@celery.task(name="app.workers.tasks_campaign.resume_held_campaigns")
+def resume_held_campaigns() -> dict:
+    """Flip cap-held campaigns back to 'sending' once their cap resets.
+
+    Held campaigns are excluded from ``list_sending_campaigns`` (and therefore
+    from the normal send loop), so this task is what brings them back after an
+    hourly / daily cap boundary. Campaigns whose queue is already drained are
+    completed instead of resumed.
+    """
+    from app.core import killswitch
+    from app.core.supabase_client import get_supabase
+
+    supabase = get_supabase()
+    if effective_settings(supabase).get("sending_paused") or killswitch.is_paused():
+        return {"resumed": [], "skipped": "paused"}
+
+    resumed, completed = _flip_held_to_sending(supabase)
+    for campaign_id in resumed:
+        send_campaign.apply_async(args=[campaign_id], countdown=1)
+    return {"resumed": resumed, "completed": completed}
+
+
+def _flip_held_to_sending(supabase) -> tuple[list[str], list[str]]:
+    """Resume (or complete) held campaigns once the cap window has reset.
+
+    Returns ``(resumed_ids, completed_ids)``. Shared by the Celery beat task and
+    the Redis-less cron driver (which then drains the resumed campaigns itself).
+    """
+    from app.core.alerts import cap_resume
+    from app.core.budget import remaining_global
+
+    held = supabase.list_held_campaigns()
+    if not held:
+        return [], []
+
+    headroom, retry, _reason = remaining_global(supabase, effective_settings(supabase))
+    if headroom <= 0:
+        return [], []
+
+    resumed: list[str] = []
+    completed: list[str] = []
+    for campaign in held:
+        campaign_id = campaign["id"]
+        if supabase.count_recipients(campaign_id, status="queued") <= 0:
+            _complete_campaign(supabase, campaign_id)
+            completed.append(campaign_id)
+            continue
+        supabase.update_campaign(campaign_id, {
+            "status": "sending",
+            "held_reason": None,
+            "held_until": None,
+        })
+        resumed.append(campaign_id)
+
+    if resumed:
+        cap_resume(held[0].get("held_reason") or "day", resumed=len(resumed),
+                   resets_in=max(60, retry))
+    return resumed, completed

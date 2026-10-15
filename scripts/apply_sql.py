@@ -27,6 +27,7 @@ ORDER = [
     "10_remove_qev.sql",
     "11_campaign_reuse.sql",
     "12_email_templates.sql",
+    "13_campaign_hold.sql",
 ]
 
 

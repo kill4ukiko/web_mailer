@@ -17,7 +17,7 @@ from app.schemas.campaigns import (
 bp = Blueprint("campaigns", __name__, url_prefix="/api/campaigns")
 
 # Statuses in which a campaign counts as "active" for the single-priority rule.
-_PRIORITY_BLOCKING = ("sending", "scheduled", "paused")
+_PRIORITY_BLOCKING = ("sending", "scheduled", "paused", "held")
 
 ACTION_MAP = {
     "start": {"status": "sending", "started_at": "now()", "finished_at": None, "circuit_state": "ok"},
@@ -258,15 +258,15 @@ def update_campaign(campaign_id: str):
 def delete_campaign(campaign_id: str):
     """DELETE /api/campaigns/<id> — remove a campaign (recipients/events cascade).
 
-    A sending campaign must be cancelled first to avoid racing the worker.
+    A sending or cap-held campaign must be cancelled first to avoid racing the
+    worker.
     """
     supabase = get_supabase()
     campaign = supabase.get_campaign(campaign_id)
     if campaign is None:
         return jsonify({"error": "campaign not found"}), 404
-    if campaign.get("status") == "sending":
+    if campaign.get("status") in ("sending", "held"):
         return jsonify({"error": "cancel the campaign before deleting it"}), 409
-
     supabase.delete_campaign(campaign_id)
     return jsonify({"deleted": campaign_id}), 200
 

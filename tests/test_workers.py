@@ -307,3 +307,110 @@ def test_send_once_returns_plan_without_requeueing(supabase, monkeypatch):
     assert result["status"] == "sending"
     assert result["requeue_in"] >= 1
     assert requeued == []  # the caller decides when to run again
+
+
+def _exhaust_hourly_cap(supabase):
+    supabase.settings_row = {"max_recipients_per_hour": 1, "max_recipients_per_day": 100}
+    from datetime import datetime, timezone
+
+    supabase.recipients.append({
+        "id": "prior-sent",
+        "campaign_id": "other",
+        "contact_id": None,
+        "status": "sent",
+        "sent_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+def test_send_campaign_holds_when_cap_exhausted(supabase, monkeypatch):
+    from app.workers.tasks_campaign import send_campaign
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=1)
+    _exhaust_hourly_cap(supabase)
+
+    alerts: list = []
+    monkeypatch.setattr("app.core.alerts.cap_hold", lambda *a, **k: alerts.append(k) or True)
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.send_campaign.apply_async", lambda *a, **k: None
+    )
+
+    result = send_campaign.run(campaign["id"])
+
+    assert result["status"] == "held"
+    held = supabase.get_campaign(campaign["id"])
+    assert held["status"] == "held"
+    assert held["held_reason"] == "hour"
+    assert alerts, "expected a cap-hold alert"
+    # Nothing was sent; the recipient is still queued for after the reset.
+    assert all(
+        r["status"] == "queued"
+        for r in supabase.recipients
+        if r["campaign_id"] == campaign["id"]
+    )
+
+
+def test_priority_handoff_defers_without_holding(supabase, monkeypatch):
+    from app.workers.tasks_campaign import send_campaign
+
+    priority = _make_campaign_and_recipients(supabase, n_recipients=1)
+    supabase.set_priority(priority["id"], "high")
+    waiting = _make_campaign_and_recipients(supabase, n_recipients=1)
+
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.send_campaign.apply_async", lambda *a, **k: None
+    )
+
+    result = send_campaign.run(waiting["id"])
+    assert result["status"] == "deferred"
+    assert supabase.get_campaign(waiting["id"])["status"] == "sending"
+
+
+def test_resume_held_campaigns_after_reset(supabase, monkeypatch):
+    from app.workers.tasks_campaign import resume_held_campaigns
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=1, status="held")
+    campaign["held_reason"] = "day"
+
+    monkeypatch.setattr("app.core.alerts.cap_resume", lambda *a, **k: True)
+    dispatched: list = []
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.send_campaign.apply_async",
+        lambda *a, **k: dispatched.append(k),
+    )
+
+    result = resume_held_campaigns.run()
+
+    assert campaign["id"] in result["resumed"]
+    assert supabase.get_campaign(campaign["id"])["status"] == "sending"
+    assert dispatched and dispatched[0]["args"] == [campaign["id"]]
+
+
+def test_resume_held_waits_while_cap_still_exhausted(supabase, monkeypatch):
+    from app.workers.tasks_campaign import resume_held_campaigns
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=1, status="held")
+    campaign["held_reason"] = "hour"
+    _exhaust_hourly_cap(supabase)
+
+    monkeypatch.setattr("app.core.alerts.cap_resume", lambda *a, **k: True)
+    result = resume_held_campaigns.run()
+
+    assert result["resumed"] == []
+    assert supabase.get_campaign(campaign["id"])["status"] == "held"
+
+
+def test_resume_held_completes_when_queue_drained(supabase, monkeypatch):
+    from app.workers.tasks_campaign import resume_held_campaigns
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=1, status="held")
+    campaign["held_reason"] = "hour"
+    supabase.recipients[0]["status"] = "sent"
+
+    monkeypatch.setattr("app.core.alerts.cap_resume", lambda *a, **k: True)
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.send_campaign.apply_async", lambda *a, **k: None
+    )
+
+    result = resume_held_campaigns.run()
+    assert campaign["id"] in result["completed"]
+    assert supabase.get_campaign(campaign["id"])["status"] == "completed"
