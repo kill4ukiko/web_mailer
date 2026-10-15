@@ -121,33 +121,37 @@ def brevo_webhook():
         recipient_status = EVENT_MAP.get(event.event, "failed")
         stats_field = STATS_FIELD_MAP.get(event.event)
 
-        supabase.record_event(
-            event_type=event.event,
-            campaign_id=event.campaign_id,
-            recipient_id=event.recipient_id,
-            url_clicked=event.click_url,
-            ip_address=event.ip,
-            user_agent=event.user_agent,
-            raw_payload=payload,
-        )
+        try:
+            supabase.record_event(
+                event_type=event.event,
+                campaign_id=event.campaign_id,
+                recipient_id=event.recipient_id,
+                url_clicked=event.click_url,
+                ip_address=event.ip,
+                user_agent=event.user_agent,
+                raw_payload=payload,
+            )
 
-        if event.recipient_id:
-            update = {"status": recipient_status}
-            if event.event in ("opened", "click"):
-                update["opened_at"] = "now()"
-            if event.event == "click":
-                update["clicked_at"] = "now()"
-            supabase.update_recipient(event.recipient_id, update)
+            if event.recipient_id:
+                update = {"status": recipient_status}
+                if event.event in ("opened", "click"):
+                    update["opened_at"] = "now()"
+                if event.event == "click":
+                    update["clicked_at"] = "now()"
+                supabase.update_recipient(event.recipient_id, update)
 
-        if event.campaign_id and stats_field:
-            supabase.increment_stats(event.campaign_id, stats_field)
+            if event.campaign_id and stats_field:
+                supabase.increment_stats(event.campaign_id, stats_field)
 
-        # Hard failures trigger global suppression per deliverability rules.
-        if event.event in ("hard_bounce", "complaint", "unsubscribe"):
-            supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP[event.event])
+            # Hard failures trigger global suppression per deliverability rules.
+            if event.event in ("hard_bounce", "complaint", "unsubscribe"):
+                supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP[event.event])
 
-        if event.event == "unsubscribe":
-            _notify_unsubscribe(supabase, event)
+            if event.event == "unsubscribe":
+                _notify_unsubscribe(supabase, event)
+        except Exception as exc:  # noqa: BLE001 - one bad event must not 500 the batch
+            errors.append(f"{event.event}: {exc}")
+            continue
 
         processed += 1
 

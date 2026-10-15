@@ -6,11 +6,14 @@ procedures (claim_recipients / suppress_contact) are invoked via RPC.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterable
 
 from supabase import Client, create_client
 
 from app.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class SupabaseClientError(RuntimeError):
@@ -235,6 +238,13 @@ class SupabaseWrapper:
         user_agent: str | None = None,
         raw_payload: dict[str, Any] | None = None,
     ) -> None:
+        """Persist a tracking/webhook event; best-effort and never raising.
+
+        ``campaign_id`` / ``recipient_id`` are foreign keys, so a link or webhook
+        for a campaign that has since been deleted would otherwise fail the whole
+        insert. On failure we retry once without those columns so the event is
+        still stored anonymously, and we never propagate the error to callers.
+        """
         payload: dict[str, Any] = {
             "event_type": event_type,
             "url_clicked": url_clicked,
@@ -246,7 +256,20 @@ class SupabaseWrapper:
             payload["campaign_id"] = campaign_id
         if recipient_id:
             payload["recipient_id"] = recipient_id
-        self.client.table("email_events").insert(payload).execute()
+
+        try:
+            self.client.table("email_events").insert(payload).execute()
+            return
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            logger.warning("record_event failed (%s); retrying without FKs", exc)
+
+        anonymous = {
+            k: v for k, v in payload.items() if k not in ("campaign_id", "recipient_id")
+        }
+        try:
+            self.client.table("email_events").insert(anonymous).execute()
+        except Exception as exc:  # noqa: BLE001 - give up, but never raise
+            logger.error("record_event could not be stored: %s", exc)
 
     def get_campaign_metrics(self, campaign_id: str) -> dict[str, int | float]:
         """Aggregate delivery metrics for the circuit breaker."""

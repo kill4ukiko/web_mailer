@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import base64
+import logging
 
 from flask import Blueprint, Response, redirect, request
 
 from app.extensions import limiter
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("tracking", __name__)
 
@@ -19,16 +22,7 @@ TRANSPARENT_GIF = base64.b64decode(
 @limiter.limit("120 per minute")
 def track_open(campaign_id: str, recipient_id: str):
     """1x1 transparent pixel. Records an 'opened' event for the recipient."""
-    supabase = _get_supabase()
-    supabase.record_event(
-        event_type="opened",
-        campaign_id=campaign_id,
-        recipient_id=recipient_id,
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get("User-Agent"),
-    )
-    supabase.increment_stats(campaign_id, "opens")
-    supabase.update_recipient(recipient_id, {"status": "delivered", "opened_at": "now()"})
+    _record_open(campaign_id, recipient_id)
     return Response(TRANSPARENT_GIF, mimetype="image/gif")
 
 
@@ -39,19 +33,62 @@ def track_click(campaign_id: str, recipient_id: str):
     target_url = request.args.get("target_url")
     if not target_url:
         return Response("missing target_url", status=400, mimetype="text/plain")
+    if not _is_web_url(target_url):
+        return Response("invalid target_url", status=400, mimetype="text/plain")
 
-    supabase = _get_supabase()
-    supabase.record_event(
-        event_type="click",
-        campaign_id=campaign_id,
-        recipient_id=recipient_id,
-        url_clicked=target_url,
-        ip_address=request.remote_addr,
-        user_agent=request.headers.get("User-Agent"),
-    )
-    supabase.increment_stats(campaign_id, "clicks")
-    supabase.update_recipient(recipient_id, {"status": "delivered", "clicked_at": "now()"})
+    _record_click(campaign_id, recipient_id, target_url)
     return redirect(target_url, code=302)
+
+
+def _record_open(campaign_id: str, recipient_id: str) -> None:
+    """Best-effort open logging; a failure must never break the pixel."""
+    try:
+        supabase = _get_supabase()
+        _safe_record_event(
+            supabase,
+            event_type="opened",
+            campaign_id=campaign_id,
+            recipient_id=recipient_id,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+        )
+        supabase.increment_stats(campaign_id, "opens")
+        supabase.update_recipient(
+            recipient_id, {"status": "delivered", "opened_at": "now()"}
+        )
+    except Exception:  # noqa: BLE001 - tracking must degrade gracefully
+        logger.warning(
+            "failed to record open %s/%s", campaign_id, recipient_id, exc_info=True
+        )
+
+
+def _record_click(campaign_id: str, recipient_id: str, target_url: str) -> None:
+    """Best-effort click logging; the redirect happens regardless."""
+    try:
+        supabase = _get_supabase()
+        _safe_record_event(
+            supabase,
+            event_type="click",
+            campaign_id=campaign_id,
+            recipient_id=recipient_id,
+            url_clicked=target_url,
+            ip_address=request.remote_addr,
+            user_agent=request.headers.get("User-Agent"),
+        )
+        supabase.increment_stats(campaign_id, "clicks")
+        supabase.update_recipient(
+            recipient_id, {"status": "delivered", "clicked_at": "now()"}
+        )
+    except Exception:  # noqa: BLE001 - tracking must degrade gracefully
+        logger.warning(
+            "failed to record click %s/%s", campaign_id, recipient_id, exc_info=True
+        )
+
+
+def _is_web_url(url: str) -> bool:
+    """Only http(s) targets are allowed (the tracker is a redirector)."""
+    lowered = (url or "").strip().lower()
+    return lowered.startswith("http://") or lowered.startswith("https://")
 
 
 @bp.get("/api/unsubscribe")
@@ -83,12 +120,14 @@ def unsubscribe_one_click():
 
 
 def _apply_unsubscribe(campaign_id: str | None, recipient_id: str | None) -> None:
-    supabase = _get_supabase()
-    if campaign_id and recipient_id:
-        supabase.update_recipient(
-            recipient_id, {"status": "unsubscribed"}
-        )
-        supabase.record_event(
+    if not (campaign_id and recipient_id):
+        return
+    supabase = None
+    try:
+        supabase = _get_supabase()
+        supabase.update_recipient(recipient_id, {"status": "unsubscribed"})
+        _safe_record_event(
+            supabase,
             event_type="unsubscribe",
             campaign_id=campaign_id,
             recipient_id=recipient_id,
@@ -96,7 +135,20 @@ def _apply_unsubscribe(campaign_id: str | None, recipient_id: str | None) -> Non
             user_agent=request.headers.get("User-Agent"),
         )
         supabase.increment_stats(campaign_id, "complaints")
+    except Exception:  # noqa: BLE001 - a stale link must still render a confirmation
+        logger.warning(
+            "failed to record unsubscribe %s/%s", campaign_id, recipient_id, exc_info=True
+        )
+    if supabase is not None:
         _notify_unsubscribe(supabase, campaign_id, recipient_id)
+
+
+def _safe_record_event(supabase, **kwargs) -> None:
+    """Record a tracking event without ever raising (stale links, DB hiccups)."""
+    try:
+        supabase.record_event(**kwargs)
+    except Exception:  # noqa: BLE001 - recording is best-effort
+        logger.warning("tracking event not recorded: %s", kwargs.get("event_type"), exc_info=True)
 
 
 def _notify_unsubscribe(supabase, campaign_id: str, recipient_id: str) -> None:
