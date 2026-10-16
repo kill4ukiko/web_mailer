@@ -219,15 +219,33 @@ if (-not $SkipTunnel) {
     }
     if (-not $tunnel) { throw "could not create/find tunnel '$TunnelName'." }
 
+    $tunnelId = $tunnel.id
+    if (-not $tunnelId) { $tunnelId = $tunnel.uuid }
+    if (-not $tunnelId) { throw "could not determine the UUID of tunnel '$TunnelName'." }
+    $credFile = Join-Path $cfHome "$tunnelId.json"
+
+    # `cloudflared tunnel create` is the only step that writes the per-tunnel
+    # credentials file. On a second machine the tunnel already exists, so that
+    # step is skipped and the file is missing -> cloudflared exits immediately.
+    # Re-materialize it from the tunnel token (same UUID + DNS, no re-create).
+    if (-not (Test-Path -LiteralPath $credFile)) {
+        Write-Warn "credentials file missing for existing tunnel - fetching via 'tunnel token'"
+        & $CfExe tunnel token --cred-file $credFile $TunnelName
+        if (-not (Test-Path -LiteralPath $credFile)) {
+            throw "could not fetch credentials for tunnel '$TunnelName' to $credFile. Make sure you are logged into the Cloudflare account that owns '$TunnelName'."
+        }
+        Write-Ok "wrote credentials $credFile"
+    } else {
+        Write-Ok "credentials present: $credFile"
+    }
+
     Write-Host "   routing DNS $PublicHost -> tunnel '$TunnelName'"
     & $CfExe tunnel route dns $TunnelName $PublicHost
     if ($LASTEXITCODE -ne 0) { Write-Warn "DNS route returned non-zero (often harmless if the record already exists)." }
 
-    $tunnelId = $tunnel.id
-    if (-not $tunnelId) { $tunnelId = $tunnel.uuid }
     $cfg = @(
         "tunnel: $tunnelId",
-        "credentials-file: $(Join-Path $cfHome "$tunnelId.json")",
+        "credentials-file: $credFile",
         "ingress:",
         "  - hostname: $PublicHost",
         "    service: http://127.0.0.1:5000",
@@ -251,3 +269,14 @@ Write-Host "  3. Register the Brevo webhook:"
 Write-Host "       https://$PublicHost/api/webhooks/brevo?token=<BREVO_WEBHOOK_SECRET>"
 Write-Host "  4. Start everything:  .\run-local.bat"
 Write-Host ""
+
+# --- Verify --------------------------------------------------------------------
+Write-Host "Verifying this machine (doctor)..." -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot 'doctor.ps1')
+$doctorRc = $LASTEXITCODE
+if ($doctorRc -ne 0) {
+    Write-Host ""
+    Write-Host "Setup finished, but doctor found the problems listed above." -ForegroundColor Yellow
+    Write-Host "Fix them and re-run doctor.bat." -ForegroundColor Yellow
+}
+exit $doctorRc

@@ -48,6 +48,33 @@ def _log_path() -> Path:
     return ROOT / ".tools" / "cloudflared" / "tunnel.log"
 
 
+# Substrings in cloudflared's output that map to an actionable fix.
+_HINTS = (
+    ("credentials file", "run setup-local.bat to (re)create the tunnel credentials"),
+    ("couldn't find a valid tunnel", "run setup-local.bat to set up the tunnel"),
+    ("no ingress rules", "run setup-local.bat to (re)write config.yml"),
+)
+
+
+def _tail(max_lines: int = 12) -> list[str]:
+    """Return the last non-empty lines of cloudflared's log (best effort)."""
+    try:
+        text = _log_path().read_text(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        return []
+    lines = [line for line in text.splitlines() if line.strip()]
+    return lines[-max_lines:]
+
+
+def _diagnose(lines: list[str]) -> str | None:
+    """Map a known cloudflared failure to a one-line fix hint."""
+    blob = "\n".join(lines).lower()
+    for marker, hint in _HINTS:
+        if marker in blob:
+            return hint
+    return None
+
+
 def _notify(title: str, lines: list[str] | None = None, level: str = "info") -> bool:
     """Best-effort Telegram alert (never raises, never blocks the tunnel)."""
     try:
@@ -148,14 +175,21 @@ def watch(
 
                 code = proc.returncode
                 uptime = time.monotonic() - started
+                tail = _tail()
+                hint = _diagnose(tail)
                 logger.warning("cloudflared exited (code=%s) after %.0fs", code, uptime)
+                if tail:
+                    logger.warning("last cloudflared output:\n%s", "\n".join(tail))
+                if hint:
+                    logger.warning("hint: %s", hint)
 
             if healthy is not False:
-                _notify(
-                    "Tunnel down",
-                    [f"cloudflared exited (code {code}); restarting in ~{backoff:.0f}s"],
-                    "error",
-                )
+                alert = [f"cloudflared exited (code {code}); restarting in ~{backoff:.0f}s"]
+                if hint:
+                    alert.append(f"hint: {hint}")
+                if tail:
+                    alert.extend(tail[-4:])
+                _notify("Tunnel down", alert, "error")
                 healthy = False
 
             # Reset the backoff once the process managed to stay up a while.

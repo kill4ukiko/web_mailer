@@ -72,8 +72,21 @@ if not exist "%CLOUDFLARED%" (
   if not exist "%CF_CONFIG%" (
     echo WARNING: %CF_CONFIG% missing ^(run setup-local.bat^). Skipping tunnel.
   ) else (
-    echo Starting Cloudflare tunnel supervisor ^(%PUBLIC_URL%^) ...
-    start "Tunnel" /min "%PY%\python.exe" "%~dp0scripts\tunnel_watch.py"
+    rem Guard: cloudflared crash-loops if its credentials file is missing.
+    set "CF_CRED="
+    for /f "delims=" %%c in ('findstr /b /c:"credentials-file:" "%CF_CONFIG%"') do set "CF_CRED=%%c"
+    if defined CF_CRED set "CF_CRED=!CF_CRED:credentials-file: =!"
+    if not defined CF_CRED (
+      echo WARNING: could not read credentials-file from config.yml ^(run setup-local.bat^). Skipping tunnel.
+    ) else (
+      if not exist "!CF_CRED!" (
+        echo WARNING: tunnel credentials missing: !CF_CRED!
+        echo          Run setup-local.bat to create them. Skipping tunnel.
+      ) else (
+        echo Starting Cloudflare tunnel supervisor ^(%PUBLIC_URL%^) ...
+        start "Tunnel" /min "%PY%\python.exe" "%~dp0scripts\tunnel_watch.py"
+      )
+    )
   )
 )
 

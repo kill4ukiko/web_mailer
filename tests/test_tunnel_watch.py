@@ -27,3 +27,16 @@ def test_alert_guard_dedupes_locally(monkeypatch):
 
     assert alerts._claim_once("unit-test-key", ttl=3600) is True
     assert alerts._claim_once("unit-test-key", ttl=3600) is False
+
+
+def test_diagnose_includes_hint_for_credentials_error(tmp_path, monkeypatch):
+    log = tmp_path / "tunnel.log"
+    log.write_text(
+        "2026-10-15 19:15:54,125 ERROR cloudflared: Tunnel credentials file "
+        "'C:\\Users\\Administrator\\.cloudflared\\b6468ad2-97a8-4cc9-ae67-bc50c6217d95.json' "
+        "doesn't exist or is not a file\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tunnel_watch, "_log_path", lambda: log)
+    assert tunnel_watch._diagnose(tunnel_watch._tail()) is not None
+    assert "setup-local.bat" in tunnel_watch._diagnose(tunnel_watch._tail()).lower()
