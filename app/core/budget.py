@@ -41,13 +41,20 @@ def remaining_global(supabase, settings: dict[str, Any]) -> tuple[int, int, str 
     the wait until that boundary, and ``reason`` is ``"day"`` / ``"hour"`` so the
     caller can mark the campaign as *held* rather than merely deferred. On a
     healthy budget ``reason`` is ``None``.
+
+    Fails **closed**: if the sent-count cannot be read (database unavailable),
+    it reports zero headroom with a ``"count"`` reason so the caller defers
+    rather than sending uncapped.
     """
     now = datetime.now(timezone.utc)
     hour_ago = now.timestamp() - 3600
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
 
-    hourly_cap = int(settings.get("max_recipients_per_hour") or 0)
-    daily_cap = int(settings.get("max_recipients_per_day") or 0)
+    from app.core.mailer_config import runtime_caps
+
+    caps = runtime_caps(settings)
+    hourly_cap = caps["hourly"]
+    daily_cap = caps["daily"]
 
     hour_headroom = _UNLIMITED
     day_headroom = _UNLIMITED
@@ -56,8 +63,8 @@ def remaining_global(supabase, settings: dict[str, Any]) -> tuple[int, int, str 
             hour_headroom = hourly_cap - supabase.count_sent_since(_iso(hour_ago))
         if daily_cap > 0:
             day_headroom = daily_cap - supabase.count_sent_since(_iso(day_start))
-    except Exception:  # noqa: BLE001 - never let cap counting block delivery
-        return _UNLIMITED, CAP_RETRY_SECONDS, None
+    except Exception:  # noqa: BLE001 - fail closed: never send uncapped
+        return 0, CAP_RETRY_SECONDS, "count"
 
     if day_headroom <= 0:
         return 0, seconds_until_reset("day"), "day"

@@ -143,6 +143,16 @@ const INFO = {
     body: "<p>Gently ramps volume on a new domain so mailbox providers learn you send wanted " +
       "mail. Keep the send rate low and increase gradually over 2–4 weeks.</p>",
   },
+  soft_bounce: {
+    title: "Soft-bounce handling",
+    body: "<p>A <strong>soft bounce</strong> is a temporary failure (full mailbox, greylisting, " +
+      "server busy). Choose how this campaign treats the contact:</p>" +
+      "<ul><li><strong>Suppress immediately</strong> — safest for reputation (default).</li>" +
+      "<li><strong>Suppress after N</strong> — tolerate a few transient failures before " +
+      "suppressing; set N with the threshold field.</li>" +
+      "<li><strong>Never suppress</strong> — always keep the address active (use with care).</li></ul>" +
+      "<p>Hard bounces, spam complaints and unsubscribes are always suppressed.</p>",
+  },
   lists: {
     title: "Contact lists",
     body: "<p>Reusable groups of contacts. A campaign can target any number of lists, " +
@@ -331,6 +341,10 @@ function initCampaignEditor() {
     if (ws) payload.window_start = ws;
     const we = opt("window_end");
     if (we) payload.window_end = we;
+    const sbp = opt("soft_bounce_policy");
+    if (sbp) payload.soft_bounce_policy = sbp;
+    const sbt = numField("soft_bounce_threshold");
+    if (sbt !== null) payload.soft_bounce_threshold = sbt;
 
     const button = form.querySelector("button[type=submit]");
     button.disabled = true;
@@ -416,6 +430,9 @@ function initSettingsForm() {
     const we = (fd.get("window_end") || "").trim();
     if (ws) payload.window_start = ws;
     if (we) payload.window_end = we;
+    const sbp = (fd.get("soft_bounce_policy") || "").trim();
+    if (sbp) payload.soft_bounce_policy = sbp;
+    payload.soft_bounce_threshold = num("soft_bounce_threshold");
     Object.keys(payload).forEach((k) => payload[k] == null && delete payload[k]);
 
     const button = form.querySelector("button[type=submit]");
@@ -655,9 +672,11 @@ function initContactsHub() {
       const ids = selectedIds();
       if (!ids.length) { window.alert("Select contacts first."); return; }
       if (!window.confirm(
-        "Delete " + ids.length + " contact(s)?\n\n" +
-        "This removes them (and their list memberships and campaign recipient " +
-        "records) permanently. This cannot be undone.")) return;
+        "Permanently delete " + ids.length + " contact(s)?\n\n" +
+        "This is the clean-slate option: the rows (and their suppression state, " +
+        "list memberships and campaign recipient records) are removed for good, " +
+        "so these addresses become fully reusable. This cannot be undone.\n\n" +
+        "To keep their suppression state, use “Hide selected” instead.")) return;
       deleteSelectedBtn.disabled = true;
       try {
         const result = await postJSON("/api/contacts/bulk-delete", { ids });
@@ -669,6 +688,73 @@ function initContactsHub() {
       }
     });
   }
+
+  const hideSelectedBtn = document.getElementById("soft-delete-selected-btn");
+  if (hideSelectedBtn) {
+    hideSelectedBtn.addEventListener("click", async () => {
+      const ids = selectedIds();
+      if (!ids.length) { window.alert("Select contacts first."); return; }
+      if (!window.confirm(
+        "Hide " + ids.length + " contact(s)?\n\n" +
+        "They are removed from the list but keep their status and suppression " +
+        "(e.g. a bounced address stays bounced). You can restore them anytime.")) return;
+      hideSelectedBtn.disabled = true;
+      try {
+        const result = await postJSON("/api/contacts/soft-delete", { ids });
+        window.alert("Hidden " + result.soft_deleted + " contact(s).");
+        window.location.reload();
+      } catch (err) {
+        window.alert("Error: " + err.message);
+        hideSelectedBtn.disabled = false;
+      }
+    });
+  }
+
+  const restoreSelectedBtn = document.getElementById("restore-selected-btn");
+  if (restoreSelectedBtn) {
+    restoreSelectedBtn.addEventListener("click", async () => {
+      const ids = selectedIds();
+      if (!ids.length) { window.alert("Select contacts first."); return; }
+      restoreSelectedBtn.disabled = true;
+      try {
+        const result = await postJSON("/api/contacts/restore", { ids });
+        window.alert("Restored " + result.restored + " contact(s).");
+        window.location.reload();
+      } catch (err) {
+        window.alert("Error: " + err.message);
+        restoreSelectedBtn.disabled = false;
+      }
+    });
+  }
+
+  table.addEventListener("click", async (event) => {
+    const hide = event.target.closest("[data-soft-delete-contact]");
+    if (hide) {
+      const id = hide.dataset.softDeleteContact;
+      if (!window.confirm("Hide this contact? Its status/suppression is kept.")) return;
+      hide.disabled = true;
+      try {
+        await postJSON("/api/contacts/soft-delete", { ids: [id] });
+        window.location.reload();
+      } catch (err) {
+        window.alert("Error: " + err.message);
+        hide.disabled = false;
+      }
+      return;
+    }
+    const restore = event.target.closest("[data-restore-contact]");
+    if (restore) {
+      const id = restore.dataset.restoreContact;
+      restore.disabled = true;
+      try {
+        await postJSON("/api/contacts/restore", { ids: [id] });
+        window.location.reload();
+      } catch (err) {
+        window.alert("Error: " + err.message);
+        restore.disabled = false;
+      }
+    }
+  });
 }
 
 // ------------------------------------------------------------------ //
@@ -1090,7 +1176,8 @@ function initDeliverability() {
           <div class="muted small">${report.public_base_url || ""}</div></div>
       </div>
       <h3>Recommendations</h3>
-      <ul class="rec-list">${recs}</ul>`;
+      <ul class="rec-list">${recs}</ul>
+      ${renderReputation(report.reputation)}`;
   }
 
   async function run() {
@@ -1112,6 +1199,53 @@ function initDeliverability() {
 
   if (runBtn) runBtn.addEventListener("click", run);
   run();
+}
+
+// Reputation analytics block (rendered inside the deliverability report).
+function renderReputation(rep) {
+  if (!rep) return "";
+  const rates = rep.rates || {};
+  const totals = rep.totals || {};
+  const rateCard = (label, value, warn) => {
+    const cls = warn ? "badge-warn" : "badge-ok";
+    return `<div class="card"><span class="card-label">${label}</span>
+      <span class="card-value">${value}%</span></div>`;
+  };
+  // Gmail guidance: bounce < 2%, complaint < 0.1%.
+  const bounceWarn = (rates.bounces || 0) >= 2;
+  const complaintWarn = (rates.complaints || 0) >= 0.1;
+  const domains = (rep.top_bounce_domains || []).map(
+    (d) => `<li>${d.domain} <span class="muted">(${d.count})</span></li>`
+  ).join("") || "<li class=\"muted\">No bubbled addresses yet.</li>";
+  const suppression = rep.suppression || {};
+  const suppressionLine = Object.entries(suppression)
+    .map(([k, v]) => `<span class="badge badge-${k}">${k.replace("_", " ")}: ${v}</span>`)
+    .join(" ") || "<span class=\"muted\">none</span>";
+
+  return `
+    <h3>Reputation analytics</h3>
+    <div class="card-grid">
+      <div class="card"><span class="card-label">Sent (all time)</span>
+        <span class="card-value">${totals.sent || 0}</span></div>
+      ${rateCard("Bounce rate", (rates.bounces || 0).toFixed(2), bounceWarn)}
+      ${rateCard("Complaint rate", (rates.complaints || 0).toFixed(2), complaintWarn)}
+      <div class="card"><span class="card-label">Open rate</span>
+        <span class="card-value">${(rates.opens || 0).toFixed(2)}%</span></div>
+      <div class="card"><span class="card-label">Click rate</span>
+        <span class="card-value">${(rates.clicks || 0).toFixed(2)}%</span></div>
+      <div class="card"><span class="card-label">Reusable contacts</span>
+        <span class="card-value">${rep.deliverable_contacts || 0}</span></div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h4>Top bounce domains</h4>
+        <ul class="muted small">${domains}</ul>
+      </div>
+      <div>
+        <h4>Suppressed contacts</h4>
+        <div>${suppressionLine}</div>
+      </div>
+    </div>`;
 }
 
 

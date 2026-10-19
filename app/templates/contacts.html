@@ -115,10 +115,21 @@
 
 <h2>All contacts</h2>
 <div class="filter-row">
-  <a class="pill{{ ' pill-active' if not status else '' }}" href="{{ url_for('web.contacts_list') }}">All</a>
+  <a class="pill{{ ' pill-active' if not status and not delivery and not show_deleted else '' }}" href="{{ url_for('web.contacts_list') }}">All</a>
   <a class="pill{{ ' pill-active' if status == 'active' else '' }}" href="{{ url_for('web.contacts_list', status='active') }}">Active</a>
   <a class="pill{{ ' pill-active' if status == 'unsubscribed' else '' }}" href="{{ url_for('web.contacts_list', status='unsubscribed') }}">Unsubscribed</a>
-  <a class="pill{{ ' pill-active' if status == 'bounced_hard' else '' }}" href="{{ url_for('web.contacts_list', status='bounced_hard') }}">Bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_hard' else '' }}" href="{{ url_for('web.contacts_list', status='bounced_hard') }}">Hard bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_soft' else '' }}" href="{{ url_for('web.contacts_list', status='bounced_soft') }}">Soft bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'complained' else '' }}" href="{{ url_for('web.contacts_list', status='complained') }}">Complained</a>
+</div>
+<div class="filter-row">
+  <span class="muted small">Delivery:</span>
+  <a class="pill{{ ' pill-active' if delivery == 'delivered' else '' }}" href="{{ url_for('web.contacts_list', delivery='delivered') }}">Delivered</a>
+  <a class="pill{{ ' pill-active' if delivery == 'opened' else '' }}" href="{{ url_for('web.contacts_list', delivery='opened') }}">Opened</a>
+  <a class="pill{{ ' pill-active' if delivery == 'clicked' else '' }}" href="{{ url_for('web.contacts_list', delivery='clicked') }}">Clicked</a>
+  <a class="pill{{ ' pill-active' if delivery == 'bounced' else '' }}" href="{{ url_for('web.contacts_list', delivery='bounced') }}">Bounced</a>
+  <a class="pill{{ ' pill-active' if show_deleted else '' }}"
+     href="{{ url_for('web.contacts_list', deleted='1') }}">Deleted (restore)</a>
 </div>
 
 {% if contacts %}
@@ -126,7 +137,7 @@
   <thead>
     <tr>
       <th><input type="checkbox" id="select-all" aria-label="Select all"></th>
-      <th>Email</th><th>First name</th><th>Last name</th><th>Status</th><th></th>
+      <th>Email</th><th>First name</th><th>Last name</th><th>Status</th><th>Delivery</th><th></th>
     </tr>
   </thead>
   <tbody>
@@ -137,8 +148,18 @@
       <td><input class="inline-edit" data-field="first_name" value="{{ c.first_name or '' }}"></td>
       <td><input class="inline-edit" data-field="last_name" value="{{ c.last_name or '' }}"></td>
       <td><span class="badge badge-{{ c.status }}">{{ c.status }}</span></td>
+      <td>
+        {% if c.last_recipient_status %}
+        <span class="badge badge-delivery-{{ c.last_recipient_status }}">{{ c.last_recipient_status.replace('_', ' ') }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
       <td class="num">
         <button type="button" class="btn btn-sm" data-save-contact="{{ c.id }}">Save</button>
+        {% if show_deleted %}
+        <button type="button" class="btn btn-sm" data-restore-contact="{{ c.id }}">Restore</button>
+        {% else %}
+        <button type="button" class="btn btn-sm" data-soft-delete-contact="{{ c.id }}">Hide</button>
+        {% endif %}
         <button type="button" class="btn btn-sm btn-danger" data-delete-contact="{{ c.id }}">Delete</button>
       </td>
     </tr>
@@ -154,12 +175,17 @@
   </select>
   <button type="button" class="btn btn-sm" id="add-selected-btn">Add selected to list</button>
   <button type="button" class="btn btn-sm" id="create-list-from-selected">Create list from selected</button>
-  <button type="button" class="btn btn-sm btn-danger" id="delete-selected-btn">Delete selected</button>
+  {% if show_deleted %}
+  <button type="button" class="btn btn-sm" id="restore-selected-btn">Restore selected</button>
+  {% else %}
+  <button type="button" class="btn btn-sm" id="soft-delete-selected-btn">Hide selected (keep status)</button>
+  {% endif %}
+  <button type="button" class="btn btn-sm btn-danger" id="delete-selected-btn">Delete selected (permanent)</button>
 </div>
 
 <div class="actions">
-  {% if page > 1 %}<a class="btn" href="{{ url_for('web.contacts_list', page=page-1, status=status) }}">Previous</a>{% endif %}
-  {% if contacts|length == 50 %}<a class="btn" href="{{ url_for('web.contacts_list', page=page+1, status=status) }}">Next</a>{% endif %}
+  {% if page > 1 %}<a class="btn" href="{{ url_for('web.contacts_list', page=page-1, status=status, delivery=delivery, deleted='1' if show_deleted else None) }}">Previous</a>{% endif %}
+  {% if contacts|length == 50 %}<a class="btn" href="{{ url_for('web.contacts_list', page=page+1, status=status, delivery=delivery, deleted='1' if show_deleted else None) }}">Next</a>{% endif %}
 </div>
 {% else %}
 <p class="muted">No contacts yet. Use <strong>Import / add contacts</strong> above.</p>

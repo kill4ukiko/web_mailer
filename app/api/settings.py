@@ -84,9 +84,10 @@ def update_settings():
         }), 422
 
     # Plan-aware guard: recommended values warn, above-limit values block the save.
-    plan = data.get("brevo_plan") or merged_settings().get("brevo_plan")
+    current = merged_settings()
+    plan = data.get("brevo_plan") or current.get("brevo_plan")
     try:
-        data, warnings = guard_settings(data, plan)
+        data, warnings = guard_settings(data, plan, current)
     except SettingsGuardError as exc:
         return jsonify({"error": "settings rejected", "reasons": exc.errors}), 422
 

@@ -69,6 +69,8 @@ a.link:hover { text-decoration: underline; }
   padding: 18px; display: flex; flex-direction: column; gap: 6px;
 }
 .card-live { border-color: var(--ok); }
+a.card { text-decoration: none; color: inherit; transition: border-color .15s, transform .15s; }
+a.card:hover { border-color: var(--accent); transform: translateY(-2px); }
 .card-value { font-size: 30px; font-weight: 700; }
 .card-label { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
 
@@ -90,6 +92,11 @@ a.link:hover { text-decoration: underline; }
 .badge-priority { background: var(--warn); border-color: var(--warn); color: #1a1a1a; }
 .badge-completed { color: var(--accent); border-color: var(--accent); }
 .badge-cancelled, .badge-bounced_hard, .badge-bounced_soft, .badge-invalid, .badge-complained, .badge-unsubscribed { color: var(--danger); border-color: var(--danger); }
+.badge-delivery-sent { color: #aab3d6; }
+.badge-delivery-delivered { color: var(--ok); border-color: var(--ok); }
+.badge-delivery-opened { color: var(--accent); border-color: var(--accent); }
+.badge-delivery-clicked { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.badge-delivery-hard_bounce, .badge-delivery-soft_bounce, .badge-delivery-complained, .badge-delivery-unsubscribed { color: var(--danger); border-color: var(--danger); }
 
 .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
 

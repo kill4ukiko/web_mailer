@@ -7,6 +7,7 @@ from app.core.settings_guard import (
     SettingsGuardError,
     guard_settings,
     is_known_plan,
+    plan_cap,
     plan_limits,
 )
 
@@ -65,3 +66,35 @@ def test_absent_fields_are_ignored():
     data, warnings = guard_settings({}, "free")
     assert data == {}
     assert warnings == []
+
+
+def test_plan_cap_reports_hard_limit():
+    assert plan_cap("free", "max_recipients_per_day") == 300
+    assert plan_cap("free", "unknown_field") is None
+
+
+def test_hourly_cap_above_daily_cap_is_rejected():
+    with pytest.raises(SettingsGuardError) as exc:
+        guard_settings(
+            {"max_recipients_per_hour": 500, "max_recipients_per_day": 250},
+            "enterprise",
+        )
+    assert any("daily cap" in e for e in exc.value.errors)
+
+
+def test_cross_field_check_uses_current_values():
+    # Only the hourly side changes; the stored daily cap (100) still binds.
+    with pytest.raises(SettingsGuardError):
+        guard_settings(
+            {"max_recipients_per_hour": 200},
+            "enterprise",
+            current={"max_recipients_per_day": 100},
+        )
+    # A larger current daily cap makes the same change acceptable.
+    _, warnings = guard_settings(
+        {"max_recipients_per_hour": 200},
+        "enterprise",
+        current={"max_recipients_per_day": 5000},
+    )
+    assert warnings == []
+

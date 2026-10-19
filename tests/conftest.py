@@ -182,8 +182,16 @@ class FakeSupabase:
         return self._Client(self)
 
     # ----- contacts -----
-    def list_contacts(self, page=1, limit=50, status=None):
-        items = [c for c in self.contacts if (status is None or c["status"] == status)]
+    def list_contacts(self, page=1, limit=50, status=None, include_deleted=False, delivery=None):
+        from app.core.supabase_client import DELIVERY_FILTERS
+
+        delivery_values = DELIVERY_FILTERS.get(delivery) if delivery else None
+        items = [
+            c for c in self.contacts
+            if (include_deleted or c.get("deleted_at") is None)
+            and (status is None or c["status"] == status)
+            and (delivery_values is None or c.get("last_recipient_status") in delivery_values)
+        ]
         start = (page - 1) * limit
         return {"page": page, "limit": limit, "total": len(items), "items": items[start : start + limit]}
 
@@ -202,6 +210,11 @@ class FakeSupabase:
             "timezone": data.get("timezone", "UTC"),
             "safe_to_send": True,
             "metadata": data.get("metadata", {}),
+            "deleted_at": None,
+            "last_recipient_status": None,
+            "last_event_at": None,
+            "soft_bounce_count": 0,
+            "last_soft_bounce_at": None,
             "created_at": "2026-01-01T00:00:00Z",
         }
         self.contacts.append(row)
@@ -221,6 +234,53 @@ class FakeSupabase:
                 c["status"] = status
                 c["safe_to_send"] = status == "active"
                 c["updated_at"] = "2026-01-01T00:00:00Z"
+
+    def soft_delete_contacts(self, contact_ids):
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        count = 0
+        for c in self.contacts:
+            if c["id"] in ids and c.get("deleted_at") is None:
+                c["deleted_at"] = "2026-01-02T00:00:00Z"
+                count += 1
+        return count
+
+    def restore_contacts(self, contact_ids):
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        count = 0
+        for c in self.contacts:
+            if c["id"] in ids and c.get("deleted_at") is not None:
+                c["deleted_at"] = None
+                count += 1
+        return count
+
+    def touch_contact_lifecycle(self, email, status, when=None):
+        for c in self.contacts:
+            if c["email"] == email.lower().strip():
+                c["last_recipient_status"] = status
+                c["last_event_at"] = when or "2026-01-01T00:00:00Z"
+
+    def bulk_touch_contact_lifecycle(self, emails, status):
+        cleaned = {e.lower().strip() for e in emails if e and str(e).strip()}
+        for c in self.contacts:
+            if c["email"] in cleaned:
+                c["last_recipient_status"] = status
+                c["last_event_at"] = "2026-01-01T00:00:00Z"
+
+    def register_soft_bounce(self, email, threshold):
+        for c in self.contacts:
+            if c["email"] == email.lower().strip():
+                c["soft_bounce_count"] = int(c.get("soft_bounce_count") or 0) + 1
+                c["last_soft_bounce_at"] = "2026-01-01T00:00:00Z"
+                if threshold > 0 and c["soft_bounce_count"] >= threshold:
+                    c["status"] = "bounced_soft"
+                    c["safe_to_send"] = False
+                    return True
+                return False
+        return False
 
     def delete_contact(self, contact_id):
         before = len(self.contacts)

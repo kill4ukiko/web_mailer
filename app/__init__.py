@@ -1,6 +1,8 @@
 """Flask application factory for the web_mailer platform."""
 from __future__ import annotations
 
+import time
+
 from flask import Flask, jsonify, redirect, request, url_for
 
 from app.config import get_settings
@@ -15,6 +17,10 @@ _PUBLIC_ENDPOINTS = {
     "auth.logout",
     "auth.me",
 }
+
+# Cached Redis reachability (checked at most once per _REDIS_CHECK_TTL seconds).
+_REDIS_CHECK_TTL = 5.0
+_redis_check: dict[str, float | bool] = {"ok": True, "at": 0.0}
 
 
 def create_app(config_object: object | None = None) -> Flask:
@@ -44,6 +50,7 @@ def create_app(config_object: object | None = None) -> Flask:
     register_extensions(app)
     register_blueprints(app)
     register_auth_guard(app)
+    register_redis_guard(app)
     register_context(app)
 
     return app
@@ -110,6 +117,54 @@ def register_auth_guard(app: Flask) -> None:
         if request.path.startswith("/api/"):
             return jsonify({"error": "authentication required"}), 401
         return redirect(url_for("auth.login_page", next=request.full_path.rstrip("?")))
+
+
+def register_redis_guard(app: Flask) -> None:
+    """Fail **closed** when the rate-limiter datastore (Redis) is offline.
+
+    The limiter is backed by Redis; if that is unreachable, Flask-Limiter would
+    otherwise raise a 500 mid-request. Instead we return a clean 503 for any
+    guarded endpoint so clients get an honest "try later" rather than an error
+    page, and the app never runs limited routes without the limiter in force.
+    The health endpoint and static assets stay reachable so monitoring still
+    works.
+    """
+    import redis as redis_py
+
+    @app.before_request
+    def _fail_closed_without_redis():
+        if app.config.get("TESTING"):
+            return None
+        settings = app.config.get("SETTINGS")
+        storage = str(getattr(settings, "ratelimit_storage_uri", "") or "")
+        if not storage.startswith(("redis://", "rediss://")):
+            return None
+
+        endpoint = request.endpoint
+        if endpoint in _PUBLIC_ENDPOINTS or (endpoint or "").startswith("static"):
+            return None
+
+        now = time.time()
+        if now - float(_redis_check["at"]) >= _REDIS_CHECK_TTL:
+            ok = True
+            try:
+                client = redis_py.Redis.from_url(
+                    storage, socket_connect_timeout=1, socket_timeout=1
+                )
+                client.ping()
+            except Exception:  # noqa: BLE001 - unreachable datastore
+                ok = False
+            _redis_check["ok"] = ok
+            _redis_check["at"] = now
+
+        if not _redis_check["ok"]:
+            if request.path.startswith("/api/") or request.path.startswith("/track/"):
+                return jsonify({
+                    "error": "temporarily unavailable: the rate limiter datastore "
+                             "(Redis) is offline",
+                }), 503
+            return ("Service temporarily unavailable (datastore offline).", 503)
+        return None
 
 
 def register_context(app: Flask) -> None:

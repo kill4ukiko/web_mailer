@@ -119,3 +119,28 @@ def test_high_priority_helper_picks_the_marked_campaign():
     campaigns = [{"id": "a", "priority": "normal"}, {"id": "b", "priority": "high"}]
     assert high_priority_campaign(campaigns)["id"] == "b"
     assert high_priority_campaign([{"id": "a", "priority": "normal"}]) is None
+
+
+def test_remaining_global_fails_closed_on_count_error(supabase, monkeypatch):
+    _sending(supabase, "a")
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(supabase, "count_sent_since", _boom)
+    headroom, retry, reason = remaining_global(supabase, _settings())
+    assert headroom == 0
+    assert retry == CAP_RETRY_SECONDS
+    assert reason == "count"
+
+
+def test_tick_budgets_fails_closed_on_count_error(supabase, monkeypatch):
+    _sending(supabase, "a")
+
+    monkeypatch.setattr(
+        supabase, "count_sent_since", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db"))
+    )
+    budgets, retry, reason = tick_budgets(supabase, _settings(), batch_size=500)
+    assert budgets == {}
+    assert reason == "count"
+

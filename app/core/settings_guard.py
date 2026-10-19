@@ -65,17 +65,42 @@ def plan_limits(plan: str | None) -> dict[str, Any]:
     }
 
 
-def guard_settings(data: dict[str, Any], plan: str | None) -> tuple[dict[str, Any], list[str]]:
+# field -> BREVO_PLANS spec key holding that field's hard limit.
+_PLAN_LIMIT_KEYS = {
+    "send_rate_per_minute": "rate_limit",
+    "max_recipients_per_hour": "hourly_limit",
+    "max_recipients_per_day": "daily_limit",
+}
+
+
+def plan_cap(plan: str | None, field: str) -> int | None:
+    """Hard limit a plan imposes on ``field`` (None when the field is unbounded)."""
+    key = _PLAN_LIMIT_KEYS.get(field)
+    if key is None:
+        return None
+    return int(plan_spec(plan)[key])
+
+
+def guard_settings(
+    data: dict[str, Any],
+    plan: str | None,
+    current: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     """Validate ``data`` against the plan.
 
     Returns ``(data, warnings)`` for acceptable values. Raises
     :class:`SettingsGuardError` (with every reason) when any value is above the
-    plan's hard limit or the absolute ceiling.
+    plan's hard limit or the absolute ceiling, or when the effective values are
+    internally inconsistent (e.g. the hourly cap exceeds the daily cap).
+
+    ``current`` is the currently-stored settings (used to resolve cross-field
+    checks when only one of a pair is being changed).
     """
     if not is_known_plan(plan):
         raise SettingsGuardError([f"unknown Brevo plan '{plan}'"])
 
     spec = plan_spec(plan)
+    current = current or {}
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -102,6 +127,20 @@ def guard_settings(data: dict[str, Any], plan: str | None) -> tuple[dict[str, An
                 f"value ({recommended:,} {unit}). Fine if deliberate — watch bounce and "
                 f"complaint rates."
             )
+
+    # Cross-field consistency: the hourly cap may not exceed the daily cap
+    # (compare effective values so changing only one side is still validated).
+    def _effective(field):
+        value = data.get(field, current.get(field))
+        return int(value) if value else 0
+
+    hourly = _effective("max_recipients_per_hour")
+    daily = _effective("max_recipients_per_day")
+    if hourly and daily and hourly > daily:
+        errors.append(
+            f"Hourly cap ({hourly:,} emails/hour) is larger than the daily cap "
+            f"({daily:,} emails/day); the hourly cap must not exceed the daily cap."
+        )
 
     if errors:
         raise SettingsGuardError(errors)

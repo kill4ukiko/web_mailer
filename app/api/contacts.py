@@ -61,7 +61,13 @@ def _clean(value) -> str | None:
 
 @bp.get("")
 def list_contacts():
-    """GET /api/contacts?page=1&limit=50&status=active"""
+    """GET /api/contacts?page=1&limit=50&status=active&delivery=bounced&deleted=1
+
+    ``status`` filters the contact_status (active/unsubscribed/bounced_hard/...).
+    ``delivery`` filters the last delivery outcome (sent/delivered/opened/
+    clicked/bounced/complained/unsubscribed). ``deleted=1`` includes
+    soft-deleted contacts.
+    """
     try:
         page = max(int(request.args.get("page", 1)), 1)
         limit = min(max(int(request.args.get("limit", 50)), 1), 500)
@@ -69,7 +75,12 @@ def list_contacts():
         return jsonify({"error": "page/limit must be integers"}), 400
 
     status = request.args.get("status")
-    data = get_supabase().list_contacts(page=page, limit=limit, status=status)
+    delivery = request.args.get("delivery")
+    include_deleted = request.args.get("deleted") in ("1", "true", "yes")
+    data = get_supabase().list_contacts(
+        page=page, limit=limit, status=status,
+        include_deleted=include_deleted, delivery=delivery,
+    )
     return jsonify(data), 200
 
 
@@ -311,9 +322,12 @@ def delete_contact(contact_id: str):
 
 @bp.post("/bulk-delete")
 def bulk_delete_contacts():
-    """POST /api/contacts/bulk-delete  {ids: [...]} — remove several contacts.
+    """POST /api/contacts/bulk-delete  {ids: [...]} — hard-remove several contacts.
 
-    List memberships and campaign recipients cascade in the database.
+    This is the "clean slate" escape hatch: the row (and thus any suppression)
+    is gone, so the address becomes fully reusable. List memberships and
+    campaign recipients cascade in the database. To keep suppression state use
+    ``/soft-delete`` instead.
     """
     try:
         payload = ContactBulkDelete.model_validate(request.get_json(silent=True) or {})
@@ -326,3 +340,39 @@ def bulk_delete_contacts():
 
     deleted = get_supabase().delete_contacts(ids)
     return jsonify({"deleted": deleted}), 200
+
+
+@bp.post("/soft-delete")
+def soft_delete_contacts():
+    """POST /api/contacts/soft-delete  {ids: [...]} — hide contacts, keep state.
+
+    Suppression (bounced/complained/unsubscribed) and lifecycle are preserved,
+    so restoring the contact brings it back exactly as it was.
+    """
+    try:
+        payload = ContactBulkDelete.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"error": exc.errors(include_url=False)}), 422
+
+    ids = [cid for cid in payload.ids if cid]
+    if not ids:
+        return jsonify({"error": "no contact ids provided"}), 400
+
+    hidden = get_supabase().soft_delete_contacts(ids)
+    return jsonify({"soft_deleted": hidden}), 200
+
+
+@bp.post("/restore")
+def restore_contacts():
+    """POST /api/contacts/restore  {ids: [...]} — un-hide soft-deleted contacts."""
+    try:
+        payload = ContactBulkDelete.model_validate(request.get_json(silent=True) or {})
+    except ValidationError as exc:
+        return jsonify({"error": exc.errors(include_url=False)}), 422
+
+    ids = [cid for cid in payload.ids if cid]
+    if not ids:
+        return jsonify({"error": "no contact ids provided"}), 400
+
+    restored = get_supabase().restore_contacts(ids)
+    return jsonify({"restored": restored}), 200

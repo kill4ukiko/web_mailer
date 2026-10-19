@@ -32,7 +32,18 @@ STATS_FIELD_MAP = {
     "hard_bounce": "bounces",
     "soft_bounce": "bounces",
     "complaint": "complaints",
-    "unsubscribe": "complaints",
+    "unsubscribe": "unsubscribes",
+}
+
+# Event -> contact lifecycle label (badges/filters on the contacts page).
+LIFECYCLE_MAP = {
+    "delivered": "delivered",
+    "opened": "opened",
+    "click": "clicked",
+    "hard_bounce": "hard_bounce",
+    "soft_bounce": "soft_bounce",
+    "complaint": "complained",
+    "unsubscribe": "unsubscribed",
 }
 
 # Event -> contact_status used when globally suppressing a contact.
@@ -120,6 +131,7 @@ def brevo_webhook():
 
         recipient_status = EVENT_MAP.get(event.event, "failed")
         stats_field = STATS_FIELD_MAP.get(event.event)
+        lifecycle = LIFECYCLE_MAP.get(event.event)
 
         try:
             supabase.record_event(
@@ -143,12 +155,22 @@ def brevo_webhook():
             if event.campaign_id and stats_field:
                 supabase.increment_stats(event.campaign_id, stats_field)
 
+            # Record the newest outcome on the contact for badge/filter UI.
+            if lifecycle and event.email:
+                supabase.touch_contact_lifecycle(event.email, lifecycle)
+
             # Hard failures trigger global suppression per deliverability rules.
+            suppressed = False
             if event.event in ("hard_bounce", "complaint", "unsubscribe"):
                 supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP[event.event])
+                suppressed = True
+            elif event.event == "soft_bounce":
+                suppressed = _apply_soft_bounce_policy(supabase, event)
 
             if event.event == "unsubscribe":
                 _notify_unsubscribe(supabase, event)
+            if event.event in ("hard_bounce", "soft_bounce", "complaint"):
+                _notify_reputation(supabase, event, suppressed=suppressed)
         except Exception as exc:  # noqa: BLE001 - one bad event must not 500 the batch
             errors.append(f"{event.event}: {exc}")
             continue
@@ -156,6 +178,41 @@ def brevo_webhook():
         processed += 1
 
     return jsonify({"received": True, "processed": processed, "errors": errors}), 200
+
+
+def _soft_bounce_policy(supabase, event: BrevoEvent) -> tuple[str, int]:
+    """Resolve the campaign's soft-bounce policy (default: suppress now)."""
+    policy, threshold = "suppress", 2
+    if event.campaign_id:
+        campaign = supabase.get_campaign(event.campaign_id)
+        if campaign:
+            policy = campaign.get("soft_bounce_policy") or "suppress"
+            threshold = int(campaign.get("soft_bounce_threshold") or 2)
+    return policy, threshold
+
+
+def _apply_soft_bounce_policy(supabase, event: BrevoEvent) -> bool:
+    """Handle a soft bounce per policy; return True when it suppressed the contact."""
+    policy, threshold = _soft_bounce_policy(supabase, event)
+    if policy == "never":
+        return False
+    if policy == "threshold":
+        return supabase.register_soft_bounce(event.email, threshold)
+    supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP["soft_bounce"])
+    return True
+
+
+def _notify_reputation(supabase, event: BrevoEvent, *, suppressed: bool) -> None:
+    """Telegram alert for a bounce/complaint with contact + running rates."""
+    try:
+        from app.core.notifications import notify_reputation
+
+        campaign = (
+            supabase.get_campaign(event.campaign_id) if event.campaign_id else None
+        ) or {}
+        notify_reputation(event, campaign, suppressed=suppressed)
+    except Exception:  # noqa: BLE001 - alerts must never break the webhook
+        pass
 
 
 def _notify_unsubscribe(supabase, event: BrevoEvent) -> None:

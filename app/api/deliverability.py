@@ -3,9 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
 
-from flask import Blueprint, jsonify, request
-
-from app.core.deliverability import full_report
+from app.core.deliverability import full_report, reputation_summary
 from app.core.mailer_config import effective_base_url, effective_settings, is_public_url
 from app.core.supabase_client import get_supabase
 
@@ -35,4 +33,5 @@ def get_deliverability():
                        "Without it the open-tracking pixel and unsubscribe links point at "
                        "localhost, so opens/clicks are never recorded and unsubscribe is broken.",
         })
+    report["reputation"] = reputation_summary(supabase)
     return jsonify(report), 200

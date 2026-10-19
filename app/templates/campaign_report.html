@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} — {{ category }} · webmailer{% endblock %}
+{% block content %}
+<p><a class="link" href="{{ url_for('web.campaign_detail', campaign_id=campaign.id) }}">&larr; {{ campaign.name }}</a></p>
+<h1>Report: {{ category.replace('_', ' ') }}
+  <span class="muted">({{ rows|length }})</span></h1>
+<p class="muted">{{ campaign.subject }} &middot; from {{ campaign.from_name }} &lt;{{ campaign.from_email }}&gt;</p>
+
+<div class="filter-row">
+  {% for c in ['sent', 'delivered', 'opens', 'clicks', 'bounces', 'hard_bounce', 'soft_bounce', 'complained', 'unsubscribed', 'failed', 'skipped', 'queued', 'sending', 'deferred'] %}
+  <a class="pill{{ ' pill-active' if category == c else '' }}"
+     href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category=c) }}">
+    {{ c.replace('_', ' ') }} <span class="muted">({{ counts.get(c, 0) }})</span>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="actions">
+  <a class="btn btn-primary"
+     href="{{ url_for('campaigns.campaign_report', campaign_id=campaign.id, category=category, format='csv') }}">
+    Download CSV ({{ rows|length }})
+  </a>
+</div>
+
+{% if rows %}
+<table class="table">
+  <thead>
+    <tr>
+      <th>Email</th><th>Name</th><th>Recipient</th><th>Contact</th>
+      <th>Sent</th><th>Opened</th><th>Clicked</th><th>Link</th><th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.email }}</td>
+      <td>{{ (r.first_name or '') ~ (' ' ~ r.last_name if r.last_name else '') }}</td>
+      <td><span class="badge badge-delivery-{{ r.recipient_status }}">{{ r.recipient_status }}</span></td>
+      <td>{% if r.contact_status %}<span class="badge badge-{{ r.contact_status }}">{{ r.contact_status }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="muted">{{ r.sent_at[:19].replace('T', ' ') if r.sent_at else '—' }}</td>
+      <td>{% if r.opened_at %}<span class="dot on"></span>{% else %}<span class="dot"></span>{% endif %}</td>
+      <td>{% if r.clicked_at %}<span class="dot on"></span>{% else %}<span class="dot"></span>{% endif %}</td>
+      <td class="muted">{% if r.link %}<a class="link" href="{{ r.link }}" target="_blank" rel="noopener">{{ r.link[:60] }}</a>{% else %}—{% endif %}</td>
+      <td class="muted">{{ r.last_error or '' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No recipients in “{{ category.replace('_', ' ') }}”.</p>
+{% endif %}
+{% endblock %}

@@ -28,6 +28,7 @@ ORDER = [
     "11_campaign_reuse.sql",
     "12_email_templates.sql",
     "13_campaign_hold.sql",
+    "14_reputation_lifecycle.sql",
 ]
 
 

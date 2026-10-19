@@ -15,6 +15,17 @@ from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+# Delivery-lifecycle filter -> stored ``contacts.last_recipient_status`` values.
+DELIVERY_FILTERS: dict[str, tuple[str, ...]] = {
+    "sent": ("sent",),
+    "delivered": ("delivered",),
+    "opened": ("opened",),
+    "clicked": ("clicked",),
+    "bounced": ("hard_bounce", "soft_bounce"),
+    "complained": ("complained",),
+    "unsubscribed": ("unsubscribed",),
+}
+
 
 class SupabaseClientError(RuntimeError):
     """Raised when a Supabase operation fails."""
@@ -33,34 +44,70 @@ class SupabaseWrapper:
     # ------------------------------------------------------------------ #
     # Contacts
     # ------------------------------------------------------------------ #
+    # Columns that must never be reset by an import/re-add upsert: suppression
+    # (status + safe_to_send) and the soft-delete/lifecycle bookkeeping.
+    _PRESERVED_CONTACT_COLUMNS = (
+        "status",
+        "safe_to_send",
+        "deleted_at",
+        "last_recipient_status",
+        "last_event_at",
+        "soft_bounce_count",
+        "last_soft_bounce_at",
+    )
+
     def list_contacts(
-        self, page: int = 1, limit: int = 50, status: str | None = None
+        self,
+        page: int = 1,
+        limit: int = 50,
+        status: str | None = None,
+        include_deleted: bool = False,
+        delivery: str | None = None,
     ) -> dict[str, Any]:
-        query = self.client.table("contacts").select("*").range(
-            (page - 1) * limit, page * limit - 1
-        ).order("created_at", desc=True)
-        if status:
-            query = query.eq("status", status)
+        def _base(query):
+            if not include_deleted:
+                query = query.is_("deleted_at", "null")
+            if status:
+                query = query.eq("status", status)
+            if delivery:
+                values = DELIVERY_FILTERS.get(delivery)
+                if len(values) == 1:
+                    query = query.eq("last_recipient_status", values[0])
+                else:
+                    query = query.in_("last_recipient_status", values)
+            return query
+
+        query = _base(
+            self.client.table("contacts").select("*").order("created_at", desc=True)
+        ).range((page - 1) * limit, page * limit - 1)
         data = query.execute().data
-        total_resp = (
-            self.client.table("contacts").select("id", count="exact")
-            if not status
-            else self.client.table("contacts").select("id", count="exact").eq("status", status)
-        )
-        total = total_resp.execute().count or 0
+
+        count_query = _base(self.client.table("contacts").select("id", count="exact"))
+        total = count_query.execute().count or 0
         return {"page": page, "limit": limit, "total": total, "items": data or []}
+
+    @classmethod
+    def _profile_payload(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Drop suppression/lifecycle columns so an upsert preserves them.
+
+        PostgREST only updates the columns present in the payload, so omitting
+        these lets an existing (suppressed, maybe soft-deleted) contact keep its
+        state while a brand-new email picks up the DB column defaults.
+        """
+        return {k: v for k, v in data.items() if k not in cls._PRESERVED_CONTACT_COLUMNS}
 
     def create_contact(self, data: dict[str, Any]) -> dict[str, Any] | None:
         email = str(data["email"]).lower().strip()
-        payload = {**data, "email": email}
+        payload = self._profile_payload({**data, "email": email})
         return self.client.table("contacts").upsert(payload, on_conflict="email").execute().data
 
     def bulk_insert_contacts(self, contacts: Iterable[dict[str, Any]]) -> tuple[int, list[str]]:
         """Upsert a batch of contacts keyed on email.
 
-        Returns (imported_count, list_of_invalid_email_rows).
+        Existing contacts keep their suppression state (status / safe_to_send);
+        only profile fields are updated. Returns (imported_count, invalid_rows).
         """
-        rows = [dict(c) for c in contacts]
+        rows = [self._profile_payload(dict(c)) for c in contacts]
         if not rows:
             return 0, []
         imported = self.client.table("contacts").upsert(
@@ -69,9 +116,86 @@ class SupabaseWrapper:
         return len(imported or []), []
 
     def update_contact_status(self, email: str, status: str) -> None:
+        """Set a contact's status; suppression follows (non-active => unsafe)."""
         self.client.table("contacts").update(
-            {"status": status, "updated_at": "now()"}
+            {"status": status, "safe_to_send": status == "active", "updated_at": "now()"}
         ).eq("email", email.lower().strip()).execute()
+
+    def soft_delete_contacts(self, contact_ids: Iterable[str]) -> int:
+        """Hide contacts without losing their suppression/lifecycle state."""
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        result = (
+            self.client.table("contacts")
+            .update({"deleted_at": "now()", "updated_at": "now()"})
+            .in_("id", ids)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def restore_contacts(self, contact_ids: Iterable[str]) -> int:
+        """Un-hide soft-deleted contacts (their status/suppression is kept)."""
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        result = (
+            self.client.table("contacts")
+            .update({"deleted_at": None, "updated_at": "now()"})
+            .in_("id", ids)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def touch_contact_lifecycle(
+        self, email: str, status: str, when: str | None = None
+    ) -> None:
+        """Record a contact's newest delivery outcome (for badges/filters)."""
+        if not email:
+            return
+        self.client.table("contacts").update({
+            "last_recipient_status": status,
+            "last_event_at": when or "now()",
+        }).eq("email", email.lower().strip()).execute()
+
+    def bulk_touch_contact_lifecycle(self, emails: Iterable[str], status: str) -> None:
+        """Record a delivery outcome for many contacts at once (by email)."""
+        cleaned = [e.lower().strip() for e in emails if e and str(e).strip()]
+        if not cleaned:
+            return
+        self.client.table("contacts").update({
+            "last_recipient_status": status,
+            "last_event_at": "now()",
+        }).in_("email", cleaned).execute()
+
+    def register_soft_bounce(self, email: str, threshold: int) -> bool:
+        """Bump a contact's soft-bounce tally; suppress at/above ``threshold``.
+
+        Returns True when the contact was suppressed by this event. Used by the
+        per-campaign ``threshold`` soft-bounce policy.
+        """
+        email = email.lower().strip()
+        rows = (
+            self.client.table("contacts")
+            .select("id,soft_bounce_count")
+            .eq("email", email)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return False
+        count = int(rows[0].get("soft_bounce_count") or 0) + 1
+        suppressed = threshold > 0 and count >= threshold
+        update: dict[str, Any] = {
+            "soft_bounce_count": count,
+            "last_soft_bounce_at": "now()",
+        }
+        if suppressed:
+            update["status"] = "bounced_soft"
+            update["safe_to_send"] = False
+        self.client.table("contacts").update(update).eq("email", email).execute()
+        return suppressed
 
     def delete_contacts(self, contact_ids: Iterable[str]) -> int:
         """Delete several contacts by id; return how many rows were removed.
@@ -112,8 +236,11 @@ class SupabaseWrapper:
     def ensure_contacts(self, rows: Iterable[dict[str, Any]]) -> dict[str, str]:
         """Create any missing contacts, returning an ``email -> id`` map.
 
-        Unknown emails are created as ``active`` contacts so that list imports,
-        manual entries and campaign extra-recipients never silently drop a row.
+        Unknown emails are created as ``active`` contacts (DB default) so that
+        list imports, manual entries and campaign extra-recipients never
+        silently drop a row. Existing contacts are only updated on their profile
+        fields: suppression (status / safe_to_send) and soft-delete state are
+        always preserved, so re-adding a bounced address can never reactivate it.
         """
         prepared: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -122,7 +249,7 @@ class SupabaseWrapper:
             if not email or email in seen:
                 continue
             seen.add(email)
-            entry: dict[str, Any] = {"email": email, "status": "active"}
+            entry: dict[str, Any] = {"email": email}
             for field in ("first_name", "last_name", "timezone", "metadata"):
                 if row.get(field) is not None:
                     entry[field] = row[field]

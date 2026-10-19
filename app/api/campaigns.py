@@ -1,7 +1,10 @@
 """Campaign creation, controls, and status endpoints."""
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+import csv
+import io
+
+from flask import Blueprint, Response, jsonify, request
 from pydantic import ValidationError
 
 from app.core.mailer_config import effective_settings
@@ -33,7 +36,7 @@ EDITABLE_STATUSES = {"draft", "scheduled", "paused"}
 # Fallbacks used when no global mailer_settings row exists.
 _FALLBACK_DEFAULTS = {
     "batch_size": 500,
-    "send_rate_per_minute": 120,
+    "send_rate_per_minute": 30,
     "stagger_seconds": 0,
     "window_start": None,
     "window_end": None,
@@ -474,6 +477,132 @@ def set_priority(campaign_id: str):
 
 
 # ---------------------------------------------------------------------------- #
+# Reports: per-category recipient drill-down + CSV export
+# ---------------------------------------------------------------------------- #
+REPORT_CATEGORIES = (
+    "sent", "delivered", "opens", "clicks", "bounces",
+    "hard_bounce", "soft_bounce", "complained", "unsubscribed",
+    "failed", "skipped", "queued", "sending", "deferred",
+)
+
+_REPORT_COLUMNS = (
+    "email", "first_name", "last_name", "contact_status", "recipient_status",
+    "sent_at", "opened_at", "clicked_at", "last_event_at", "link", "last_error",
+)
+
+
+def _report_matches(category: str, recipient: dict) -> bool:
+    status = recipient.get("status")
+    if category == "sent":
+        return recipient.get("sent_at") is not None
+    if category == "delivered":
+        return status == "delivered"
+    if category == "opens":
+        return recipient.get("opened_at") is not None
+    if category == "clicks":
+        return recipient.get("clicked_at") is not None
+    if category == "bounces":
+        return status in ("hard_bounce", "soft_bounce")
+    return status == category
+
+
+def campaign_report_rows(supabase: SupabaseWrapper, campaign_id: str, category: str) -> list[dict]:
+    """Recipients matching a report category, enriched with contact details.
+
+    Opens/clicks also carry the most recent matching event (link + time).
+    """
+    recipients = supabase.list_recipients(campaign_id, limit=1000000)
+    matched = [r for r in recipients if _report_matches(category, r)]
+
+    contact_ids = {r["contact_id"] for r in matched if r.get("contact_id")}
+    contacts: dict[str, dict] = {}
+    if contact_ids:
+        rows = (
+            supabase.client.table("contacts")
+            .select("id,email,first_name,last_name,status")
+            .in_("id", list(contact_ids))
+            .execute()
+            .data
+            or []
+        )
+        contacts = {r["id"]: r for r in rows}
+
+    events: dict[str, dict] = {}
+    if category in ("opens", "clicks") and matched:
+        event_type = "opened" if category == "opens" else "click"
+        rows = (
+            supabase.client.table("email_events")
+            .select("recipient_id,url_clicked,occurred_at")
+            .eq("campaign_id", campaign_id)
+            .eq("event_type", event_type)
+            .execute()
+            .data
+            or []
+        )
+        for row in rows:
+            rid = row.get("recipient_id")
+            if rid and rid not in events:
+                events[rid] = row
+
+    out: list[dict] = []
+    for recipient in matched:
+        contact = contacts.get(recipient.get("contact_id"), {})
+        event = events.get(recipient.get("id"), {})
+        out.append({
+            "email": contact.get("email") or recipient.get("contact_id"),
+            "first_name": contact.get("first_name"),
+            "last_name": contact.get("last_name"),
+            "contact_status": contact.get("status"),
+            "recipient_status": recipient.get("status"),
+            "sent_at": recipient.get("sent_at"),
+            "opened_at": recipient.get("opened_at"),
+            "clicked_at": recipient.get("clicked_at"),
+            "last_event_at": event.get("occurred_at"),
+            "link": event.get("url_clicked"),
+            "last_error": recipient.get("last_error"),
+        })
+    out.sort(key=lambda r: (r.get("email") or ""))
+    return out
+
+
+@bp.get("/<campaign_id>/report")
+def campaign_report(campaign_id: str):
+    """GET /api/campaigns/<id>/report?category=&format=json|csv
+
+    Lists the recipients behind a metric (delivered/opens/clicks/bounces/...)
+    with contact details, and can stream them as a CSV download.
+    """
+    supabase = get_supabase()
+    if supabase.get_campaign(campaign_id) is None:
+        return jsonify({"error": "campaign not found"}), 404
+
+    category = (request.args.get("category") or "sent").lower()
+    if category not in REPORT_CATEGORIES:
+        return jsonify({
+            "error": f"unknown category '{category}'",
+            "categories": list(REPORT_CATEGORIES),
+        }), 422
+
+    rows = campaign_report_rows(supabase, campaign_id, category)
+
+    if (request.args.get("format") or "json").lower() == "csv":
+        buffer = io.StringIO()
+        writer = csv.DictWriter(buffer, fieldnames=list(_REPORT_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({k: ("" if row.get(k) is None else row[k]) for k in _REPORT_COLUMNS})
+        filename = f"campaign-{campaign_id}-{category}.csv"
+        return Response(
+            buffer.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    return jsonify({"campaign_id": campaign_id, "category": category,
+                    "count": len(rows), "items": rows}), 200
+
+
+# ---------------------------------------------------------------------------- #
 # Reuse: preview, clone (new draft) and resend (same campaign)
 # ---------------------------------------------------------------------------- #
 def _reuse_contact_ids(supabase, campaign_id: str, mode: str) -> list[str]:
@@ -541,6 +670,8 @@ def clone_campaign(campaign_id: str):
         "window_start": campaign.get("window_start"),
         "window_end": campaign.get("window_end"),
         "window_timezone": campaign.get("window_timezone") or "UTC",
+        "soft_bounce_policy": campaign.get("soft_bounce_policy") or "suppress",
+        "soft_bounce_threshold": campaign.get("soft_bounce_threshold") or 2,
         "status": "draft",
         "reuse_root_id": root,
         "created_at": "now()",

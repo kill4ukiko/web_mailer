@@ -89,10 +89,12 @@ class Settings(BaseSettings):
 
     # Sending defaults (rate + hard caps). The rate is a global aggregate
     # ceiling shared by all campaigns; per-campaign values may only lower it.
+    # Defaults deliberately match the Free plan's *recommended* values so a
+    # fresh install can save its settings without tripping the plan guard.
     default_batch_size: int = 500
-    default_send_rate_per_minute: int = 120
-    default_max_recipients_per_hour: int = 2000
-    default_max_recipients_per_day: int = 8000
+    default_send_rate_per_minute: int = 30
+    default_max_recipients_per_hour: int = 100
+    default_max_recipients_per_day: int = 250
     default_stagger_seconds: int = 0
     default_window_start: str | None = None
     default_window_end: str | None = None

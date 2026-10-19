@@ -72,6 +72,71 @@ def effective_base_url(supabase) -> str:
     return url.rstrip("/")
 
 
+# Number of days over which warm-up ramps the caps up to full volume.
+WARMUP_DAYS = 14
+# Fraction of the configured caps in force on day 0 of warm-up.
+WARMUP_START_FACTOR = 0.1
+
+
+def warmup_factor(settings: dict[str, Any]) -> float:
+    """Multiplier (0.1..1.0) applied to the caps while warm-up is active.
+
+    Ramps linearly from ``WARMUP_START_FACTOR`` on the start date to 1.0 after
+    ``WARMUP_DAYS``. Returns 1.0 (no effect) when warm-up is off or undated.
+    """
+    if not settings.get("warmup_enabled"):
+        return 1.0
+    start = settings.get("warmup_start_date")
+    if not start:
+        return 1.0
+    from datetime import date
+
+    if isinstance(start, str):
+        try:
+            start = date.fromisoformat(str(start)[:10])
+        except ValueError:
+            return 1.0
+    days = (date.today() - start).days
+    if days <= 0:
+        return WARMUP_START_FACTOR
+    if days >= WARMUP_DAYS:
+        return 1.0
+    return min(1.0, WARMUP_START_FACTOR + (1.0 - WARMUP_START_FACTOR) * days / WARMUP_DAYS)
+
+
+def runtime_caps(settings: dict[str, Any]) -> dict[str, int]:
+    """Effective rate / hourly / daily caps after plan clamping and warm-up.
+
+    Guards against a stored value that exceeds the current plan's limit (e.g.
+    after switching to a smaller plan) and scales the caps down while warm-up is
+    active. A stored value of 0 means "unlimited" and is left untouched.
+    """
+    from app.core.settings_guard import plan_cap
+
+    plan = settings.get("brevo_plan")
+    factor = warmup_factor(settings)
+
+    def _cap(field: str, stored) -> int:
+        try:
+            value = int(stored or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value <= 0:
+            return 0
+        limit = plan_cap(plan, field)
+        if limit:
+            value = min(value, limit)
+        if factor < 1.0:
+            value = max(1, int(round(value * factor)))
+        return value
+
+    return {
+        "rate": _cap("send_rate_per_minute", settings.get("send_rate_per_minute")),
+        "hourly": _cap("max_recipients_per_hour", settings.get("max_recipients_per_hour")),
+        "daily": _cap("max_recipients_per_day", settings.get("max_recipients_per_day")),
+    }
+
+
 def is_public_url(url: str | None) -> bool:
     """True when ``url`` is an http(s) URL that a third party could reach.
 

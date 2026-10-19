@@ -179,13 +179,20 @@ def contacts_list():
     sb = get_supabase()
     page = max(int(request.args.get("page", 1)), 1)
     status = request.args.get("status") or None
-    data = sb.list_contacts(page=page, limit=50, status=status)
+    delivery = request.args.get("delivery") or None
+    show_deleted = request.args.get("deleted") in ("1", "true", "yes")
+    data = sb.list_contacts(
+        page=page, limit=50, status=status,
+        include_deleted=show_deleted, delivery=delivery,
+    )
     return render_template(
         "contacts.html",
         contacts=data["items"],
         total=data["total"],
         page=page,
         status=status,
+        delivery=delivery,
+        show_deleted=show_deleted,
         lists=sb.list_lists(),
     )
 
@@ -244,3 +251,36 @@ def _render_preview(html, plain_text, base_url):
     from app.core.content import render_preview
 
     return render_preview(html, plain_text, base_url=base_url)
+
+
+@bp.get("/campaigns/<campaign_id>/report")
+def campaign_report(campaign_id: str):
+    """Per-category recipient drill-down with CSV export (clickable metrics)."""
+    from app.api.campaigns import REPORT_CATEGORIES, campaign_report_rows
+
+    sb = get_supabase()
+    campaign = sb.get_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+
+    category = (request.args.get("category") or "delivered").lower()
+    if category not in REPORT_CATEGORIES:
+        category = "delivered"
+
+    recipients = sb.list_recipients(campaign_id, limit=1000000)
+    counts = {c: sum(1 for r in recipients if _report_match(c, r)) for c in REPORT_CATEGORIES}
+    rows = campaign_report_rows(sb, campaign_id, category)
+
+    return render_template(
+        "campaign_report.html",
+        campaign=campaign,
+        category=category,
+        counts=counts,
+        rows=rows,
+    )
+
+
+def _report_match(category: str, recipient: dict) -> bool:
+    from app.api.campaigns import _report_matches
+
+    return _report_matches(category, recipient)

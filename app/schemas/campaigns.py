@@ -28,6 +28,10 @@ class CampaignCreate(BaseModel):
     recipient_emails: list[EmailStr] | None = Field(default=None)
     list_ids: list[str] = Field(default_factory=list)
     priority: Literal["normal", "high"] | None = None
+    # Soft-bounce handling: 'suppress' (default, immediate), 'threshold'
+    # (suppress after N soft bounces) or 'never' (keep the contact active).
+    soft_bounce_policy: Literal["suppress", "threshold", "never"] | None = None
+    soft_bounce_threshold: int | None = Field(default=None, ge=1, le=10)
 
 
 class CampaignUpdate(BaseModel):
@@ -49,6 +53,8 @@ class CampaignUpdate(BaseModel):
     window_end: time | None = None
     window_timezone: str | None = Field(default=None, max_length=64)
     priority: Literal["normal", "high"] | None = None
+    soft_bounce_policy: Literal["suppress", "threshold", "never"] | None = None
+    soft_bounce_threshold: int | None = Field(default=None, ge=1, le=10)
 
 
 class CampaignAction(BaseModel):

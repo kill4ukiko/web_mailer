@@ -182,6 +182,23 @@
         <input type="time" name="window_end"
                value="{{ campaign.window_end[:5] if campaign and campaign.window_end else '' }}">
       </label>
+      <label>
+        Soft bounces {{ info('soft_bounce') }}
+        <select name="soft_bounce_policy">
+          {% set sbp = campaign.soft_bounce_policy if campaign and campaign.soft_bounce_policy else 'suppress' %}
+          <option value="suppress" {% if sbp == 'suppress' %}selected{% endif %}>Suppress immediately (default)</option>
+          <option value="threshold" {% if sbp == 'threshold' %}selected{% endif %}>Suppress after N soft bounces</option>
+          <option value="never" {% if sbp == 'never' %}selected{% endif %}>Never suppress (keep active)</option>
+        </select>
+        <small class="muted">A soft bounce is a temporary failure (full mailbox, greylisting).</small>
+      </label>
+      <label>
+        Soft-bounce threshold {{ info('soft_bounce') }}
+        <input type="number" name="soft_bounce_threshold" min="1" max="10"
+               value="{{ campaign.soft_bounce_threshold if campaign and campaign.soft_bounce_threshold else '' }}"
+               placeholder="2">
+        <small class="muted">Only used by the “suppress after N” policy.</small>
+      </label>
     </div>
   </fieldset>
 

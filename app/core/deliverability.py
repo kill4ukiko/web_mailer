@@ -190,3 +190,81 @@ def full_report(domain: str, settings: Settings | None = None) -> dict[str, Any]
     }
     report["recommendations"] = _recommendations(report)
     return report
+
+
+# --------------------------------------------------------------------------- #
+# Reputation analytics (aggregate sending outcomes + suppression signals)
+# --------------------------------------------------------------------------- #
+_TOTAL_FIELDS = ("sent", "delivered", "opens", "clicks", "bounces", "complaints", "unsubscribes")
+
+
+def _domain_of(email: str | None) -> str:
+    return (email or "").rsplit("@", 1)[-1].lower()
+
+
+def reputation_summary(supabase, top_n: int = 10) -> dict[str, Any]:
+    """Aggregate reputation signals across all campaigns and contacts.
+
+    Best-effort and never raising: returns zeroed totals if the database is
+    unavailable. Rates are percentages of sent volume. ``top_bounce_domains``
+    surfaces the domains producing the most suppressed (bounced) addresses so an
+    operator can spot a bad source before it damages the sender reputation.
+    """
+    totals = {field: 0 for field in _TOTAL_FIELDS}
+    campaigns: list[dict] = []
+    contacts: list[dict] = []
+
+    try:
+        campaigns = (
+            supabase.client.table("campaigns")
+            .select("id,name,status,stats,created_at,finished_at")
+            .execute()
+            .data
+            or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("reputation_summary campaigns query failed: %s", exc)
+
+    for campaign in campaigns:
+        stats = campaign.get("stats") or {}
+        for field in _TOTAL_FIELDS:
+            totals[field] += int(stats.get(field, 0) or 0)
+
+    sent = totals["sent"]
+    rates = {
+        field: (round(totals[field] / sent * 100, 3) if sent else 0.0)
+        for field in _TOTAL_FIELDS
+        if field != "sent"
+    }
+
+    try:
+        contacts = (
+            supabase.client.table("contacts").select("email,status").execute().data or []
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("reputation_summary contacts query failed: %s", exc)
+
+    suppression: dict[str, int] = {}
+    domain_bounces: dict[str, int] = {}
+    for contact in contacts:
+        status = contact.get("status") or "active"
+        suppression[status] = suppression.get(status, 0) + 1
+        if status in ("bounced_hard", "bounced_soft"):
+            domain = _domain_of(contact.get("email"))
+            if domain:
+                domain_bounces[domain] = domain_bounces.get(domain, 0) + 1
+
+    top_bounce_domains = [
+        {"domain": domain, "count": count}
+        for domain, count in sorted(domain_bounces.items(), key=lambda kv: kv[1], reverse=True)[:top_n]
+    ]
+    # Contacts known to be reusable (cleanly delivered / never failed).
+    deliverable = suppression.get("active", 0)
+
+    return {
+        "totals": totals,
+        "rates": rates,
+        "suppression": suppression,
+        "deliverable_contacts": deliverable,
+        "top_bounce_domains": top_bounce_domains,
+    }

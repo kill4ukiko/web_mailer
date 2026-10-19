@@ -183,6 +183,11 @@ def _send_once(campaign_id: str) -> dict:
     if sent_ids:
         supabase.bulk_update_recipients(sent_ids, {"status": "sent", "sent_at": "now()"})
         supabase.increment_stats(campaign_id, "sent", delta=len(sent_ids))
+        email_by_recipient = {r["recipient_id"]: r["email"] for r in recipients}
+        supabase.bulk_touch_contact_lifecycle(
+            [email_by_recipient[rid] for rid in sent_ids if rid in email_by_recipient],
+            "sent",
+        )
     if failed_ids:
         supabase.bulk_update_recipients(failed_ids, {"status": "failed", "last_error": "brevo send failed"})
 
@@ -208,8 +213,18 @@ def _send_once(campaign_id: str) -> dict:
 
 
 def _effective_rate(campaign: dict, settings: dict, config) -> int:
-    """Campaign rate, clamped so it can never exceed the global ceiling."""
-    global_rate = int(settings.get("send_rate_per_minute") or config.default_send_rate_per_minute)
+    """Campaign rate, clamped so it can never exceed the global ceiling.
+
+    The global ceiling also honours the active plan limit and any warm-up
+    ramp, so a per-campaign rate can never open the throttle beyond what the
+    plan (or warm-up) allows.
+    """
+    from app.core.mailer_config import runtime_caps
+
+    caps = runtime_caps(settings)
+    global_rate = caps["rate"] or int(
+        settings.get("send_rate_per_minute") or config.default_send_rate_per_minute
+    )
     rate = campaign.get("send_rate_per_minute") or global_rate
     return max(1, min(int(rate), global_rate, MAX_SEND_RATE_PER_MINUTE))
 
@@ -243,9 +258,10 @@ def _hold_campaign(supabase, campaign: dict, reason: str, resets_in: int) -> Non
     })
     try:
         from app.core.alerts import cap_hold
+        from app.core.mailer_config import runtime_caps
 
         settings = effective_settings(supabase)
-        cap = int(settings.get(f"max_recipients_per_{reason}") or 0)
+        cap = runtime_caps(settings).get(reason, 0)
         cap_hold(reason, sent=_cap_usage(supabase, reason), cap=cap, resets_in=resets_in)
     except Exception as exc:  # noqa: BLE001 - alerts must never break the loop
         logger.warning("hold notification failed: %s", exc)

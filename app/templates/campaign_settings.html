@@ -68,6 +68,20 @@
         <input type="time" name="window_end"
                value="{{ campaign.window_end[:5] if campaign.window_end else '' }}">
       </label>
+      <label>
+        Soft bounces {{ info('soft_bounce') }}
+        {% set sbp = campaign.soft_bounce_policy or 'suppress' %}
+        <select name="soft_bounce_policy">
+          <option value="suppress" {% if sbp == 'suppress' %}selected{% endif %}>Suppress immediately (default)</option>
+          <option value="threshold" {% if sbp == 'threshold' %}selected{% endif %}>Suppress after N soft bounces</option>
+          <option value="never" {% if sbp == 'never' %}selected{% endif %}>Never suppress (keep active)</option>
+        </select>
+      </label>
+      <label>
+        Soft-bounce threshold {{ info('soft_bounce') }}
+        <input type="number" name="soft_bounce_threshold" min="1" max="10"
+               value="{{ campaign.soft_bounce_threshold or 2 }}">
+      </label>
     </div>
     <small class="muted">If start &gt; close the window spans midnight (e.g. 22:00 &rarr; 06:00).</small>
   </fieldset>

@@ -16,12 +16,12 @@
 </p>
 
 <section class="cards">
-  <div class="card"><span class="card-value">{{ campaign.stats.get('sent', 0) }}</span><span class="card-label">Sent</span></div>
-  <div class="card"><span class="card-value">{{ campaign.stats.get('delivered', 0) }}</span><span class="card-label">Delivered</span></div>
-  <div class="card"><span class="card-value">{{ campaign.stats.get('opens', 0) }}</span><span class="card-label">Opens</span></div>
-  <div class="card"><span class="card-value">{{ campaign.stats.get('clicks', 0) }}</span><span class="card-label">Clicks</span></div>
-  <div class="card"><span class="card-value">{{ campaign.stats.get('bounces', 0) }}</span><span class="card-label">Bounces</span></div>
-  <div class="card"><span class="card-value">{{ campaign.stats.get('complaints', 0) }}</span><span class="card-label">Complaints</span></div>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='sent') }}"><span class="card-value">{{ campaign.stats.get('sent', 0) }}</span><span class="card-label">Sent</span></a>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='delivered') }}"><span class="card-value">{{ campaign.stats.get('delivered', 0) }}</span><span class="card-label">Delivered</span></a>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='opens') }}"><span class="card-value">{{ campaign.stats.get('opens', 0) }}</span><span class="card-label">Opens</span></a>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='clicks') }}"><span class="card-value">{{ campaign.stats.get('clicks', 0) }}</span><span class="card-label">Clicks</span></a>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='bounces') }}"><span class="card-value">{{ campaign.stats.get('bounces', 0) }}</span><span class="card-label">Bounces</span></a>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='complained') }}"><span class="card-value">{{ campaign.stats.get('complaints', 0) }}</span><span class="card-label">Complaints</span></a>
 </section>
 
 <section>
