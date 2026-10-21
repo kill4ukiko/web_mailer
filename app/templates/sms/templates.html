@@ -1,0 +1,103 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}B SMS templates &middot; webmailer{% endblock %}
+{% block content %}
+<h1>B SMS templates</h1>
+<p class="muted">
+  Save reusable message bodies, then load them into any B SMS campaign. Templates
+  never send on their own. A STOP line is appended automatically whenever a
+  campaign is send as marketing (or when the campaign opts in).
+</p>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Templates</h2>
+    <button type="button" class="btn btn-sm" id="sms-template-new-btn">New template</button>
+  </div>
+  <table class="table" id="sms-templates-table">
+    <thead>
+      <tr><th>Name</th><th>Type</th><th>Content</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr data-sms-template-id="{{ t.id }}">
+        <td>{{ t.name }}</td>
+        <td><span class="badge badge-{{ 'active' if t.sms_type == 'transactional' else 'priority' }}">{{ t.sms_type }}</span></td>
+        <td class="muted">{{ t.content[:70] }}{% if t.content|length > 70 %}&hellip;{% endif %}</td>
+        <td class="muted">{{ t.updated_at[:19].replace('T', ' ') if t.updated_at else '' }}</td>
+        <td class="num">
+          <button type="button" class="btn btn-sm" data-sms-template-edit="{{ t.id }}">Edit</button>
+          <button type="button" class="btn btn-sm" data-sms-template-use="{{ t.id }}">Use</button>
+          <button type="button" class="btn btn-sm btn-danger" data-sms-template-delete="{{ t.id }}">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not templates %}
+      <tr><td colspan="5" class="muted">No templates yet. Create one below.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2 id="sms-template-editor-title">New template</h2>
+  </div>
+  <form id="sms-template-form" class="form">
+    <input type="hidden" name="id" value="">
+    <div class="grid-2">
+      <label>Template name
+        <input type="text" name="name" required maxlength="255" placeholder="Delivery reminder">
+      </label>
+      <label>Message type
+        <select name="sms_type">
+          <option value="transactional">Transactional</option>
+          <option value="marketing">Marketing (adds STOP)</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="editor-head">
+      <div class="merge-buttons">
+        <span class="muted">Insert:</span>
+        <button type="button" class="chip" data-sms-merge="{{ '{{first_name}}' }}">first_name</button>
+        <button type="button" class="chip" data-sms-merge="{{ '{{last_name}}' }}">last_name</button>
+        <button type="button" class="chip" data-sms-merge="{{ '{{phone}}' }}">phone</button>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" name="unicode_enabled"> Unicode (emoji / non-Latin)
+      </label>
+    </div>
+
+    <label>
+      Message body
+      <textarea name="content" id="sms-template-content" rows="6" required
+        maxlength="1600" placeholder="Hi {{ '{{first_name}}' }}, your order is ready."></textarea>
+      <small class="muted">
+        GSM-7 costs 1 credit up to 160 characters (153 per extra segment);
+        Unicode drops to 70 (67 per extra segment). Merge tags:
+        {{ '{{first_name}}' }}, {{ '{{last_name}}' }}, {{ '{{phone}}' }}.
+      </small>
+    </label>
+
+    <label>
+      Organisation prefix <span class="muted">(optional)</span>
+      <input type="text" name="organisation_prefix" maxlength="64" placeholder="Acme">
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary" id="sms-template-save-btn">Save template</button>
+      <button type="button" class="btn" id="sms-template-preview-btn">Preview cost</button>
+      <button type="button" class="btn" id="sms-template-reset-btn">Clear</button>
+      <span id="sms-template-status" class="muted"></span>
+    </div>
+  </form>
+
+  <div id="sms-template-preview" class="preview-wrap" hidden>
+    <h3>Rendered preview</h3>
+    <div class="sms-bubble" id="sms-template-preview-body"></div>
+    <p class="muted small" id="sms-template-preview-meta"></p>
+  </div>
+</section>
+
+<script type="application/json" id="sms-templates-data">{{ templates | tojson }}</script>
+{% endblock %}

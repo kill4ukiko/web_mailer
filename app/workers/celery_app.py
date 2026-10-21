@@ -32,6 +32,11 @@ def make_celery() -> Celery:
 celery = make_celery()
 
 # Import task modules so they register with the worker.
-from app.workers import tasks_campaign, tasks_monitor  # noqa: E402,F401
+from app.workers import (  # noqa: E402,F401
+    tasks_campaign,
+    tasks_monitor,
+    tasks_sms,
+    tasks_sms_monitor,
+)
 
 __all__ = ["celery"]

@@ -39,7 +39,8 @@
         Stagger jitter (seconds) {{ info('stagger_seconds') }}
         <input type="number" name="stagger_seconds" min="0" max="86400"
                value="{{ campaign.stagger_seconds }}">
-        <small class="muted">Random extra delay (0..N) added between batches.</small>
+        <small class="muted">Random 0..N second delay between every email. Honoured exactly —
+          longer delay just schedules the next email later.</small>
       </label>
     </div>
   </fieldset>

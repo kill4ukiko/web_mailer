@@ -1,4 +1,4 @@
-"""PyTest fixtures. Runs against an in-memory fake Supabase (no network)."""
+﻿"""PyTest fixtures. Runs against an in-memory fake Supabase (no network)."""
 from __future__ import annotations
 
 from typing import Any
@@ -94,18 +94,27 @@ class FakeClientTable:
         return [row["id"] for row in self._store]
 
     def insert(self, data):
-        return FakeInsertResponse(data)
+        rows = data if isinstance(data, list) else [data]
+        for row in rows:
+            row.setdefault("id", f"fake-{len(self._store) + 1}")
+            self._store.append(row)
+        return FakeInsertResponse(rows)
 
     def upsert(self, data, on_conflict=None):
         store = self._store
-        for row in data:
-            key_email = row["email"].lower()
-            existing = next((r for r in store if r.get("email") == key_email), None)
+        rows = data if isinstance(data, list) else [data]
+        keys = [k.strip() for k in (on_conflict or "email").split(",") if k.strip()]
+        for row in rows:
+            existing = next(
+                (r for r in store if all(r.get(k) == row.get(k) for k in keys)),
+                None,
+            )
             if existing:
                 existing.update(row)
             else:
+                row.setdefault("id", f"fake-{len(store) + 1}")
                 store.append(row)
-        return FakeInsertResponse(data)
+        return FakeInsertResponse(rows)
 
 
 class FakeInsertResponse:
@@ -132,11 +141,33 @@ class FakeSupabase:
         self.list_memberships: list[dict[str, Any]] = []
         self.campaign_lists: list[dict[str, Any]] = []
         self.templates: list[dict[str, Any]] = []
+        self.sms_contacts: list[dict[str, Any]] = []
+        self.sms_campaigns: list[dict[str, Any]] = []
+        self.sms_recipients: list[dict[str, Any]] = []
+        self.sms_events: list[dict[str, Any]] = []
+        self.sms_settings_row: dict[str, Any] | None = None
+        self.sms_lists: list[dict[str, Any]] = []
+        self.sms_list_memberships: list[dict[str, Any]] = []
+        self.sms_campaign_lists: list[dict[str, Any]] = []
+        self.sms_templates: list[dict[str, Any]] = []
+        self.bird_sms_contacts: list[dict[str, Any]] = []
+        self.bird_sms_campaigns: list[dict[str, Any]] = []
+        self.bird_sms_recipients: list[dict[str, Any]] = []
+        self.bird_sms_events: list[dict[str, Any]] = []
+        self.bird_sms_settings_row: dict[str, Any] | None = None
+        self.bird_sms_lists: list[dict[str, Any]] = []
+        self.bird_sms_list_memberships: list[dict[str, Any]] = []
+        self.bird_sms_campaign_lists: list[dict[str, Any]] = []
+        self.bird_sms_templates: list[dict[str, Any]] = []
         self.recipient_cursor = 0
         self.campaign_cursor = 0
         self.contact_cursor = 0
         self.list_cursor = 0
         self.template_cursor = 0
+        self.sms_campaign_cursor = 0
+        self.sms_contact_cursor = 0
+        self.sms_list_cursor = 0
+        self.sms_template_cursor = 0
 
     # ----- client-table shim (used directly by some routes) -----
     class _Client:
@@ -162,6 +193,44 @@ class FakeSupabase:
                 return FakeClientTable(self._s.campaign_lists)
             if name == "email_templates":
                 return FakeClientTable(self._s.templates)
+            if name == "sms_contacts":
+                return FakeClientTable(self._s.sms_contacts)
+            if name == "sms_campaigns":
+                return FakeClientTable(self._s.sms_campaigns)
+            if name == "sms_recipients":
+                return FakeClientTable(self._s.sms_recipients)
+            if name == "sms_events":
+                return FakeClientTable(self._s.sms_events)
+            if name == "sms_settings":
+                return FakeClientTable([self._s.sms_settings_row] if self._s.sms_settings_row else [])
+            if name == "sms_lists":
+                return FakeClientTable(self._s.sms_lists)
+            if name == "sms_list_members":
+                return FakeClientTable(self._s.sms_list_memberships)
+            if name == "sms_campaign_lists":
+                return FakeClientTable(self._s.sms_campaign_lists)
+            if name == "sms_templates":
+                return FakeClientTable(self._s.sms_templates)
+            if name == "bird_sms_contacts":
+                return FakeClientTable(self._s.bird_sms_contacts)
+            if name == "bird_sms_campaigns":
+                return FakeClientTable(self._s.bird_sms_campaigns)
+            if name == "bird_sms_recipients":
+                return FakeClientTable(self._s.bird_sms_recipients)
+            if name == "bird_sms_events":
+                return FakeClientTable(self._s.bird_sms_events)
+            if name == "bird_sms_settings":
+                return FakeClientTable(
+                    [self._s.bird_sms_settings_row] if self._s.bird_sms_settings_row else []
+                )
+            if name == "bird_sms_lists":
+                return FakeClientTable(self._s.bird_sms_lists)
+            if name == "bird_sms_list_members":
+                return FakeClientTable(self._s.bird_sms_list_memberships)
+            if name == "bird_sms_campaign_lists":
+                return FakeClientTable(self._s.bird_sms_campaign_lists)
+            if name == "bird_sms_templates":
+                return FakeClientTable(self._s.bird_sms_templates)
             raise KeyError(name)
 
         def rpc(self, name, params=None):
@@ -175,6 +244,12 @@ class FakeSupabase:
                 R.data = s.requeue_stale_recipients(params.get("p_timeout_seconds", 900))
             elif name == "claim_recipients":
                 R.data = s.claim_recipients(params.get("p_campaign_id"), params.get("p_limit"))
+            elif name == "claim_sms_recipients":
+                R.data = s.claim_sms_recipients(params.get("p_campaign_id"), params.get("p_limit"))
+            elif name == "requeue_stale_sms_recipients":
+                R.data = s.requeue_stale_sms_recipients(params.get("p_timeout_seconds", 900))
+            elif name == "suppress_sms_contact":
+                s.suppress_sms_contact(params.get("p_phone"), params.get("p_reason"))
             return R()
 
     @property
@@ -586,6 +661,7 @@ class FakeSupabase:
             "send_rate_per_minute": data.get("send_rate_per_minute"),
             "stagger_seconds": data.get("stagger_seconds", 0),
             "schedule_at": data.get("schedule_at"),
+            "next_send_at": data.get("next_send_at"),
             "window_start": data.get("window_start"),
             "window_end": data.get("window_end"),
             "window_timezone": data.get("window_timezone", "UTC"),
@@ -788,6 +864,612 @@ class FakeSupabase:
     def ping(self):
         return True
 
+    # ------------------------------------------------------------------ #
+    # SMS: contacts
+    # ------------------------------------------------------------------ #
+    def _sms_contact_by_phone(self, phone):
+        phone = str(phone).strip()
+        return next((c for c in self.sms_contacts if c["phone"] == phone), None)
+
+    def list_sms_contacts(self, page=1, limit=50, status=None, include_deleted=False, delivery=None):
+        from app.core.supabase_client import SMS_DELIVERY_FILTERS
+
+        delivery_values = SMS_DELIVERY_FILTERS.get(delivery) if delivery else None
+        items = [
+            c for c in self.sms_contacts
+            if (include_deleted or c.get("deleted_at") is None)
+            and (status is None or c["status"] == status)
+            and (delivery_values is None or c.get("last_recipient_status") in delivery_values)
+        ]
+        start = (page - 1) * limit
+        return {"page": page, "limit": limit, "total": len(items), "items": items[start : start + limit]}
+
+    def create_sms_contact(self, data):
+        phone = str(data["phone"]).strip()
+        existing = self._sms_contact_by_phone(phone)
+        if existing:
+            return [existing]
+        self.sms_contact_cursor += 1
+        row = {
+            "id": f"sc{self.sms_contact_cursor}",
+            "phone": phone,
+            "country": data.get("country"),
+            "first_name": data.get("first_name"),
+            "last_name": data.get("last_name"),
+            "status": "active",
+            "safe_to_send": True,
+            "metadata": data.get("metadata", {}),
+            "deleted_at": None,
+            "last_recipient_status": None,
+            "last_event_at": None,
+            "soft_bounce_count": 0,
+            "last_soft_bounce_at": None,
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+        self.sms_contacts.append(row)
+        return [row]
+
+    def bulk_insert_sms_contacts(self, contacts):
+        count = 0
+        for row in contacts:
+            result = self.create_sms_contact({
+                k: v for k, v in row.items()
+                if k in ("phone", "country", "first_name", "last_name", "metadata")
+            })
+            if result:
+                count += 1
+        return count, []
+
+    def update_sms_contact_status(self, phone, status):
+        for c in self.sms_contacts:
+            if c["phone"] == str(phone).strip():
+                c["status"] = status
+                c["safe_to_send"] = status == "active"
+                c["updated_at"] = "2026-01-01T00:00:00Z"
+
+    def soft_delete_sms_contacts(self, contact_ids):
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        count = 0
+        for c in self.sms_contacts:
+            if c["id"] in ids and c.get("deleted_at") is None:
+                c["deleted_at"] = "2026-01-02T00:00:00Z"
+                count += 1
+        return count
+
+    def restore_sms_contacts(self, contact_ids):
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        count = 0
+        for c in self.sms_contacts:
+            if c["id"] in ids and c.get("deleted_at") is not None:
+                c["deleted_at"] = None
+                count += 1
+        return count
+
+    def touch_sms_contact_lifecycle(self, phone, status, when=None):
+        for c in self.sms_contacts:
+            if c["phone"] == str(phone).strip():
+                c["last_recipient_status"] = status
+                c["last_event_at"] = when or "2026-01-01T00:00:00Z"
+
+    def bulk_touch_sms_contact_lifecycle(self, phones, status):
+        cleaned = {str(p).strip() for p in phones if p and str(p).strip()}
+        for c in self.sms_contacts:
+            if c["phone"] in cleaned:
+                c["last_recipient_status"] = status
+                c["last_event_at"] = "2026-01-01T00:00:00Z"
+
+    def register_sms_soft_bounce(self, phone, threshold):
+        for c in self.sms_contacts:
+            if c["phone"] == str(phone).strip():
+                c["soft_bounce_count"] = int(c.get("soft_bounce_count") or 0) + 1
+                c["last_soft_bounce_at"] = "2026-01-01T00:00:00Z"
+                if threshold > 0 and c["soft_bounce_count"] >= threshold:
+                    c["status"] = "bounced_soft"
+                    c["safe_to_send"] = False
+                    return True
+                return False
+        return False
+
+    def delete_sms_contacts(self, contact_ids):
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        before = len(self.sms_contacts)
+        self.sms_contacts[:] = [c for c in self.sms_contacts if c["id"] not in ids]
+        self.sms_recipients[:] = [r for r in self.sms_recipients if r["contact_id"] not in ids]
+        self.sms_list_memberships[:] = [
+            m for m in self.sms_list_memberships if m["contact_id"] not in ids
+        ]
+        return before - len(self.sms_contacts)
+
+    def delete_sms_contact(self, contact_id):
+        return bool(self.delete_sms_contacts([contact_id]))
+
+    def update_sms_contact(self, contact_id, data):
+        contact = next((c for c in self.sms_contacts if c["id"] == contact_id), None)
+        if contact is None:
+            return None
+        payload = {k: v for k, v in data.items() if v is not None or k == "metadata"}
+        if payload.get("phone") is not None:
+            payload["phone"] = str(payload["phone"]).strip()
+        contact.update(payload)
+        contact["updated_at"] = "2026-01-01T00:00:00Z"
+        return contact
+
+    def search_sms_contacts(self, query, limit=20):
+        q = (query or "").strip().lower()
+        matches = [
+            c for c in self.sms_contacts
+            if not q
+            or q in c["phone"].lower()
+            or q in (c.get("first_name") or "").lower()
+            or q in (c.get("last_name") or "").lower()
+        ]
+        return [
+            {
+                "id": c["id"],
+                "phone": c["phone"],
+                "first_name": c.get("first_name"),
+                "last_name": c.get("last_name"),
+                "status": c["status"],
+            }
+            for c in matches[:limit]
+        ]
+
+    def ensure_sms_contacts(self, rows):
+        mapping = {}
+        for row in rows:
+            phone = str(row.get("phone") or "").strip()
+            if not phone:
+                continue
+            contact = self._sms_contact_by_phone(phone)
+            if contact is None:
+                contact = self.create_sms_contact({
+                    "phone": phone,
+                    "country": row.get("country"),
+                    "first_name": row.get("first_name"),
+                    "last_name": row.get("last_name"),
+                    "metadata": row.get("metadata") or {},
+                })[0]
+            mapping[phone] = contact["id"]
+        return mapping
+
+    def suppress_sms_contact(self, phone, reason):
+        for c in self.sms_contacts:
+            if c["phone"] == str(phone).strip():
+                c["status"] = reason
+                c["safe_to_send"] = False
+
+    # ------------------------------------------------------------------ #
+    # SMS: campaigns
+    # ------------------------------------------------------------------ #
+    def create_sms_campaign(self, data):
+        self.sms_campaign_cursor += 1
+        row = {
+            "id": f"scamp{self.sms_campaign_cursor}",
+            "name": data["name"],
+            "sender": data.get("sender", ""),
+            "content": data.get("content", ""),
+            "sms_type": data.get("sms_type", "transactional"),
+            "unicode_enabled": data.get("unicode_enabled", False),
+            "organisation_prefix": data.get("organisation_prefix"),
+            "include_stop_code": data.get("include_stop_code", False),
+            "batch_size": data.get("batch_size", 500),
+            "send_rate_per_minute": data.get("send_rate_per_minute"),
+            "stagger_seconds": data.get("stagger_seconds"),
+            "schedule_at": data.get("schedule_at"),
+            "next_send_at": data.get("next_send_at"),
+            "window_start": data.get("window_start"),
+            "window_end": data.get("window_end"),
+            "window_timezone": data.get("window_timezone"),
+            "circuit_state": "ok",
+            "status": data.get("status", "draft"),
+            "priority": data.get("priority", "normal"),
+            "soft_bounce_policy": data.get("soft_bounce_policy", "suppress"),
+            "soft_bounce_threshold": data.get("soft_bounce_threshold", 2),
+            "stats": {
+                "sent": 0, "accepted": 0, "delivered": 0, "replied": 0,
+                "bounces": 0, "skipped": 0, "failed": 0, "segments": 0, "credits_used": 0,
+            },
+            "created_at": "2026-01-01T00:00:00Z",
+            "started_at": None,
+            "finished_at": None,
+            "reuse_root_id": data.get("reuse_root_id"),
+        }
+        self.sms_campaigns.append(row)
+        return row
+
+    def get_sms_campaign(self, campaign_id):
+        return next((c for c in self.sms_campaigns if c["id"] == campaign_id), None)
+
+    def update_sms_campaign(self, campaign_id, data):
+        campaign = self.get_sms_campaign(campaign_id)
+        if campaign:
+            campaign.update(data)
+        return campaign
+
+    def delete_sms_campaign(self, campaign_id):
+        before = len(self.sms_campaigns)
+        self.sms_campaigns[:] = [c for c in self.sms_campaigns if c["id"] != campaign_id]
+        if len(self.sms_campaigns) == before:
+            return False
+        self.sms_recipients[:] = [
+            r for r in self.sms_recipients if r["campaign_id"] != campaign_id
+        ]
+        return True
+
+    def set_sms_priority(self, campaign_id, priority):
+        campaign = self.get_sms_campaign(campaign_id)
+        if campaign:
+            campaign["priority"] = priority
+        return campaign
+
+    def _add_sms_recipients_by_ids(self, campaign_id, contact_ids):
+        added = 0
+        for cid in set(contact_ids):
+            if any(r["campaign_id"] == campaign_id and r["contact_id"] == cid
+                   for r in self.sms_recipients):
+                continue
+            self.recipient_cursor += 1
+            self.sms_recipients.append({
+                "id": f"sr{self.recipient_cursor}",
+                "campaign_id": campaign_id,
+                "contact_id": cid,
+                "status": "queued",
+                "segments": None,
+                "credits_used": None,
+                "message_id": None,
+                "sent_at": None,
+                "delivered_at": None,
+                "claimed_at": None,
+                "last_error": None,
+            })
+            added += 1
+        return added
+
+    def add_sms_recipient_ids(self, campaign_id, contact_ids):
+        return self._add_sms_recipients_by_ids(campaign_id, contact_ids)
+
+    def add_sms_recipients(self, campaign_id, contact_rows):
+        rows = list(contact_rows)
+        if not rows:
+            return 0
+        return self._add_sms_recipients_by_ids(
+            campaign_id, list(self.ensure_sms_contacts(rows).values())
+        )
+
+    def list_sms_recipients(self, campaign_id, status=None, limit=1000):
+        items = [r for r in self.sms_recipients if r["campaign_id"] == campaign_id]
+        if status:
+            items = [r for r in items if r["status"] == status]
+        return items[:limit]
+
+    def find_sms_recipient_by_message_id(self, message_id):
+        if not message_id:
+            return None
+        return next(
+            (r for r in self.sms_recipients if r.get("message_id") == message_id),
+            None,
+        )
+
+    def update_sms_recipient(self, recipient_id, data):
+        self.bulk_update_sms_recipients([recipient_id], data)
+
+    def bulk_update_sms_recipients(self, recipient_ids, data):
+        for r in self.sms_recipients:
+            if r["id"] in recipient_ids:
+                r.update(data)
+
+    def count_sms_recipients(self, campaign_id, status=None):
+        return sum(
+            1 for r in self.sms_recipients
+            if r["campaign_id"] == campaign_id and (status is None or r["status"] == status)
+        )
+
+    def count_sms_sent_since(self, since_iso):
+        return sum(
+            1 for r in self.sms_recipients
+            if r.get("sent_at") and str(r["sent_at"]) >= since_iso
+        )
+
+    def count_sms_credits_since(self, since_iso):
+        total = 0.0
+        for r in self.sms_recipients:
+            if r.get("sent_at") and str(r["sent_at"]) >= since_iso:
+                try:
+                    total += float(r.get("credits_used") or 0)
+                except (TypeError, ValueError):
+                    continue
+        return int(total)
+
+    def reset_sms_recipients(self, campaign_id, contact_ids=None):
+        wanted = set(contact_ids) if contact_ids is not None else None
+        count = 0
+        for r in self.sms_recipients:
+            if r["campaign_id"] != campaign_id:
+                continue
+            if wanted is not None and r["contact_id"] not in wanted:
+                continue
+            r.update({
+                "status": "queued", "sent_at": None, "claimed_at": None,
+                "delivered_at": None, "last_error": None, "message_id": None,
+                "segments": None, "credits_used": None,
+            })
+            count += 1
+        return count
+
+    def list_active_sms_campaigns(self):
+        return [c for c in self.sms_campaigns if c["status"] in ("scheduled", "sending")]
+
+    def list_sending_sms_campaigns(self):
+        return [c for c in self.sms_campaigns if c["status"] == "sending"]
+
+    def list_held_sms_campaigns(self):
+        return [c for c in self.sms_campaigns if c["status"] == "held"]
+
+    def list_due_scheduled_sms(self):
+        from app.core.scheduling import is_due
+
+        return [
+            c for c in self.sms_campaigns
+            if c["status"] == "scheduled" and is_due(c.get("schedule_at"))
+        ]
+
+    def list_engagement_sms_campaigns(self, hours=24):
+        from datetime import datetime, timedelta, timezone
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        out = []
+        for c in self.sms_campaigns:
+            if c["status"] == "sending":
+                out.append(c)
+            elif c["status"] == "completed" and str(c.get("finished_at") or "") >= since:
+                out.append(c)
+        return out
+
+    def increment_sms_stats(self, campaign_id, field, delta=1):
+        campaign = self.get_sms_campaign(campaign_id)
+        if campaign:
+            campaign["stats"][field] = campaign["stats"].get(field, 0) + delta
+
+    def get_sms_campaign_metrics(self, campaign_id):
+        campaign = self.get_sms_campaign(campaign_id)
+        return dict(campaign["stats"]) if campaign else {
+            "sent": 0, "delivered": 0, "bounces": 0,
+            "skipped": 0, "failed": 0, "credits_used": 0,
+        }
+
+    def thread_sms_root(self, campaign_id):
+        campaign = self.get_sms_campaign(campaign_id)
+        if campaign is None:
+            return None
+        return campaign.get("reuse_root_id") or campaign["id"]
+
+    def thread_sms_campaign_ids(self, root_id):
+        ids = {c["id"] for c in self.sms_campaigns if c.get("reuse_root_id") == root_id}
+        ids.add(root_id)
+        return sorted(ids)
+
+    def thread_sms_contact_ids(self, root_id):
+        ids = set(self.thread_sms_campaign_ids(root_id))
+        return sorted({
+            r["contact_id"] for r in self.sms_recipients if r["campaign_id"] in ids
+        })
+
+    def sms_campaign_target_contact_ids(self, campaign_id):
+        lists = self.list_sms_campaign_lists(campaign_id)
+        if lists:
+            return sorted(self.sms_contact_ids_for_lists([l["id"] for l in lists]))
+        return sorted(c["id"] for c in self.sms_contacts if c.get("status") == "active")
+
+    def claim_sms_recipients(self, campaign_id, limit):
+        claimed = []
+        for r in self.sms_recipients:
+            if r["campaign_id"] == campaign_id and r["status"] == "queued" and len(claimed) < limit:
+                contact = next((c for c in self.sms_contacts if c["id"] == r["contact_id"]), None)
+                if contact is None or contact["status"] != "active" or not contact["safe_to_send"]:
+                    continue
+                r["status"] = "sending"
+                r["claimed_at"] = "2026-01-01T00:00:00Z"
+                claimed.append({
+                    "recipient_id": r["id"],
+                    "contact_id": contact["id"],
+                    "phone": contact["phone"],
+                    "first_name": contact["first_name"],
+                    "last_name": contact["last_name"],
+                    "country": contact.get("country"),
+                    "metadata": contact.get("metadata") or {},
+                })
+        return claimed
+
+    def requeue_stale_sms_recipients(self, timeout_seconds=900):
+        count = 0
+        for r in self.sms_recipients:
+            if r["status"] == "sending" and r.get("claimed_at") is None:
+                r["status"] = "queued"
+                count += 1
+        return count
+
+    def record_sms_event(self, event_type, campaign_id=None, recipient_id=None, raw_payload=None):
+        self.sms_events.append({
+            "event_type": event_type,
+            "campaign_id": campaign_id,
+            "recipient_id": recipient_id,
+            "raw_payload": raw_payload or {},
+        })
+
+    # ------------------------------------------------------------------ #
+    # SMS: lists
+    # ------------------------------------------------------------------ #
+    def list_sms_lists(self):
+        out = []
+        for entry in self.sms_lists:
+            count = sum(1 for m in self.sms_list_memberships if m["list_id"] == entry["id"])
+            out.append({**entry, "member_count": count})
+        return out
+
+    def create_sms_list(self, name, description=None):
+        self.sms_list_cursor += 1
+        row = {
+            "id": f"slist{self.sms_list_cursor}",
+            "name": name,
+            "description": description,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+        self.sms_lists.append(row)
+        return row
+
+    def get_sms_list(self, list_id):
+        return next((entry for entry in self.sms_lists if entry["id"] == list_id), None)
+
+    def update_sms_list(self, list_id, data):
+        entry = self.get_sms_list(list_id)
+        if entry:
+            entry.update(data)
+        return entry
+
+    def delete_sms_list(self, list_id):
+        before = len(self.sms_lists)
+        self.sms_lists[:] = [entry for entry in self.sms_lists if entry["id"] != list_id]
+        self.sms_list_memberships[:] = [
+            m for m in self.sms_list_memberships if m["list_id"] != list_id
+        ]
+        self.sms_campaign_lists[:] = [
+            c for c in self.sms_campaign_lists if c["list_id"] != list_id
+        ]
+        return len(self.sms_lists) != before
+
+    def list_sms_members(self, list_id):
+        members = []
+        for m in self.sms_list_memberships:
+            if m["list_id"] != list_id:
+                continue
+            contact = next((c for c in self.sms_contacts if c["id"] == m["contact_id"]), None)
+            if contact:
+                members.append({
+                    "id": contact["id"],
+                    "phone": contact["phone"],
+                    "first_name": contact.get("first_name"),
+                    "last_name": contact.get("last_name"),
+                    "status": contact["status"],
+                    "added_at": m.get("added_at"),
+                })
+        return members
+
+    def add_sms_members(self, list_id, contact_ids):
+        added = 0
+        for cid in set(contact_ids):
+            if any(m["list_id"] == list_id and m["contact_id"] == cid
+                   for m in self.sms_list_memberships):
+                continue
+            self.sms_list_memberships.append({
+                "list_id": list_id, "contact_id": cid, "added_at": "2026-01-01T00:00:00Z",
+            })
+            added += 1
+        return added
+
+    def add_sms_members_by_phone(self, list_id, phones):
+        rows = [{"phone": str(p).strip()} for p in phones if p and str(p).strip()]
+        if not rows:
+            return 0
+        return self.add_sms_members(list_id, list(self.ensure_sms_contacts(rows).values()))
+
+    def remove_sms_member(self, list_id, contact_id):
+        before = len(self.sms_list_memberships)
+        self.sms_list_memberships[:] = [
+            m for m in self.sms_list_memberships
+            if not (m["list_id"] == list_id and m["contact_id"] == contact_id)
+        ]
+        return len(self.sms_list_memberships) != before
+
+    def sms_contact_ids_for_lists(self, list_ids):
+        ids = {lid for lid in list_ids if lid}
+        return list({
+            m["contact_id"] for m in self.sms_list_memberships if m["list_id"] in ids
+        })
+
+    def add_sms_campaign_lists(self, campaign_id, list_ids):
+        added = 0
+        for lid in set(list_ids):
+            if any(c["campaign_id"] == campaign_id and c["list_id"] == lid
+                   for c in self.sms_campaign_lists):
+                continue
+            self.sms_campaign_lists.append({"campaign_id": campaign_id, "list_id": lid})
+            added += 1
+        return added
+
+    def list_sms_campaign_lists(self, campaign_id):
+        ids = {c["list_id"] for c in self.sms_campaign_lists if c["campaign_id"] == campaign_id}
+        return [entry for entry in self.sms_lists if entry["id"] in ids]
+
+    def replace_sms_campaign_lists(self, campaign_id, list_ids):
+        self.sms_campaign_lists[:] = [
+            c for c in self.sms_campaign_lists if c["campaign_id"] != campaign_id
+        ]
+        self.add_sms_campaign_lists(campaign_id, list_ids)
+
+    def remove_sms_campaign_list(self, campaign_id, list_id):
+        before = len(self.sms_campaign_lists)
+        self.sms_campaign_lists[:] = [
+            c for c in self.sms_campaign_lists
+            if not (c["campaign_id"] == campaign_id and c["list_id"] == list_id)
+        ]
+        return len(self.sms_campaign_lists) != before
+
+    # ------------------------------------------------------------------ #
+    # SMS: templates
+    # ------------------------------------------------------------------ #
+    def list_sms_templates(self):
+        return sorted(self.sms_templates, key=lambda t: t.get("updated_at", ""), reverse=True)
+
+    def get_sms_template(self, template_id):
+        return next((t for t in self.sms_templates if t["id"] == template_id), None)
+
+    def create_sms_template(self, name, content, sms_type="transactional",
+                            unicode_enabled=False, organisation_prefix=None):
+        self.sms_template_cursor += 1
+        row = {
+            "id": f"stpl{self.sms_template_cursor}",
+            "name": name,
+            "content": content,
+            "sms_type": sms_type,
+            "unicode_enabled": unicode_enabled,
+            "organisation_prefix": organisation_prefix,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        }
+        self.sms_templates.append(row)
+        return row
+
+    def update_sms_template(self, template_id, data):
+        entry = self.get_sms_template(template_id)
+        if entry:
+            entry.update(data)
+            entry["updated_at"] = "2026-01-02T00:00:00Z"
+        return entry
+
+    def delete_sms_template(self, template_id):
+        before = len(self.sms_templates)
+        self.sms_templates[:] = [t for t in self.sms_templates if t["id"] != template_id]
+        return len(self.sms_templates) != before
+
+    # ------------------------------------------------------------------ #
+    # SMS: settings
+    # ------------------------------------------------------------------ #
+    def get_sms_settings_row(self):
+        return self.sms_settings_row
+
+    def update_sms_settings(self, data):
+        if self.sms_settings_row is None:
+            self.sms_settings_row = {"id": "ss1"}
+        self.sms_settings_row.update(data)
+        return self.sms_settings_row
+
 
 @pytest.fixture()
 def supabase():
@@ -810,6 +1492,9 @@ def _deterministic_sender(monkeypatch):
     # A public base URL so the send-time tracking/unsubscribe guard passes by
     # default; dedicated tests override it to exercise the guard itself.
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://mail.example.com")
+    # Never let the suite talk to the developer's real Telegram bot.
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "")
     # Disable the auth wall by default; auth tests opt back in explicitly.
     monkeypatch.setenv("AUTH_REQUIRED", "false")
     monkeypatch.setenv("AUTH_ALLOWED_EMAILS", "")
@@ -819,6 +1504,59 @@ def _deterministic_sender(monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _forbid_live_sends(monkeypatch):
+    """Guarantee tests can never deliver a real email.
+
+    Individual tests may still monkeypatch ``send_email`` themselves, but any
+    accidental live call fails loudly instead of hitting Brevo.
+    """
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("live Brevo send attempted during tests")
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_email", _boom)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _forbid_live_sms_sends(monkeypatch):
+    """Guarantee tests can never deliver a real SMS via Brevo."""
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("live Brevo SMS send attempted during tests")
+
+    monkeypatch.setattr("app.core.sms.SmsClient.send_sms", _boom)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _clear_sms_credit_cache(monkeypatch):
+    """Keep the cached Brevo credit snapshot from leaking across tests.
+
+    Redis is also stubbed out so the cache never attempts a (slow) connection
+    to an unreachable datastore during the suite.
+    """
+    from app.core import sms_credits
+
+    monkeypatch.setattr(sms_credits, "_redis", lambda: None)
+    sms_credits.clear_cache()
+    yield
+    sms_credits.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def _no_redis(monkeypatch):
+    """Never reach the developer's (often absent) Redis during tests.
+
+    Components that use Redis all degrade to process-local behaviour when the
+    holder yields None, which also keeps the suite fast when Redis is offline.
+    Tests that need caching can patch ``_RedisHolder.get`` themselves.
+    """
+    monkeypatch.setattr(
+        "app.extensions._RedisHolder.get", classmethod(lambda cls: None)
+    )
+    yield
 
 
 @pytest.fixture()

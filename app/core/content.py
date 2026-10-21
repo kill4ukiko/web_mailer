@@ -1,4 +1,4 @@
-"""Outbound email content processing.
+﻿"""Outbound email content processing.
 
 Prepares each recipient's HTML/plain-text just-in-time before delivery:
   1. wrap bare HTML fragments in a minimal email shell
@@ -10,10 +10,14 @@ Prepares each recipient's HTML/plain-text just-in-time before delivery:
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import html as html_lib
 import re
 from typing import Any
 from urllib.parse import quote
+
+from flask import current_app, has_app_context
 
 _HREF_RE = re.compile(r"""(href\s*=\s*)("([^"]*)"|'([^']*)')""", re.IGNORECASE)
 _BODY_CLOSE_RE = re.compile(r"</body\s*>", re.IGNORECASE)
@@ -42,9 +46,36 @@ _FOOTER_HTML = (
 _FOOTER_TEXT = "\n\n---\nUnsubscribe: {{unsubscribe}}"
 
 
+def _unsubscribe_secret() -> str:
+    if has_app_context():
+        value = current_app.config.get("SECRET_KEY")
+        if value:
+            return str(value)
+    from app.config import get_settings
+
+    return str(get_settings().secret_key or "")
+
+
+def build_unsubscribe_token(campaign_id: str, recipient_id: str) -> str:
+    message = f"{campaign_id}:{recipient_id}".encode()
+    digest = hmac.new(_unsubscribe_secret().encode(), message, hashlib.sha256).hexdigest()
+    return digest[:32]
+
+
+def verify_unsubscribe_token(campaign_id: str, recipient_id: str, token: str | None) -> bool:
+    if not token:
+        return True  # legacy links created before signed unsubscribe URLs
+    expected = build_unsubscribe_token(campaign_id, recipient_id)
+    return hmac.compare_digest(expected, str(token))
+
+
 def build_unsubscribe_url(base_url: str, campaign_id: str, recipient_id: str) -> str:
     base = base_url.rstrip("/")
-    return f"{base}{_UNSUB_PATH}?cid={quote(str(campaign_id))}&rid={quote(str(recipient_id))}"
+    token = build_unsubscribe_token(str(campaign_id), str(recipient_id))
+    return (
+        f"{base}{_UNSUB_PATH}?cid={quote(str(campaign_id))}"
+        f"&rid={quote(str(recipient_id))}&t={token}"
+    )
 
 
 def build_open_pixel_url(base_url: str, campaign_id: str, recipient_id: str) -> str:

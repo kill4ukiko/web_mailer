@@ -1,0 +1,69 @@
+﻿{% extends "bird/base.html" %}
+{% block title %}{{ campaign.name }} &middot; Bird SMS{% endblock %}
+{% block content %}
+<div class="section-head">
+  <div><h1>{{ campaign.name }}</h1><span class="badge badge-{{ campaign.status }}">{{ campaign.status }}</span>
+    {% if campaign.priority == 'high' %}<span class="badge badge-priority">high</span>{% endif %}</div>
+  <div class="actions">
+    {% if campaign.status in ('draft', 'scheduled', 'paused') %}<a class="btn" href="{{ url_for('web.bird_sms_campaign_edit', campaign_id=campaign.id) }}">Edit</a>{% endif %}
+    <a class="btn" href="{{ url_for('web.bird_sms_campaign_report', campaign_id=campaign.id) }}">Report</a>
+  </div>
+</div>
+
+{% set st = campaign.stats or {} %}
+<section class="cards">
+  <div class="card"><span class="card-value">{{ total }}</span><span class="card-label">Recipients</span></div>
+  <div class="card"><span class="card-value">{{ st.get('sent', 0) }}</span><span class="card-label">Sent</span></div>
+  <div class="card"><span class="card-value">{{ st.get('delivered', 0) }}</span><span class="card-label">Delivered</span></div>
+  <div class="card"><span class="card-value">{{ st.get('failed', 0) + st.get('undelivered', 0) }}</span><span class="card-label">Failed / undelivered</span></div>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Controls</h2></div>
+  <div class="actions" data-bird-campaign-actions data-campaign-id="{{ campaign.id }}">
+    {% if campaign.status == 'draft' %}<button type="button" class="btn btn-primary" data-bird-action="start">Start now</button>{% endif %}
+    {% if campaign.status == 'scheduled' %}<button type="button" class="btn btn-primary" data-bird-action="start">Start now</button>{% endif %}
+    {% if campaign.status in ('sending', 'scheduled') %}<button type="button" class="btn" data-bird-action="pause">Pause</button>{% endif %}
+    {% if campaign.status == 'paused' %}<button type="button" class="btn btn-primary" data-bird-action="resume">Resume</button>{% endif %}
+    {% if campaign.status not in ('completed', 'cancelled') %}<button type="button" class="btn btn-danger" data-bird-action="cancel">Cancel</button>{% endif %}
+    <button type="button" class="btn" id="bird-send-test-btn">Send test SMS</button>
+    <span id="bird-action-status" class="muted"></span>
+  </div>
+  {% if campaign.circuit_state not in ('ok', 'warning') %}<p class="notice small">Circuit breaker is {{ campaign.circuit_state }}. Sending is blocked until it recovers.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2>Message</h2><span class="muted">{{ segments }} segment(s) for a sample recipient</span></div>
+  <p class="muted small">Mode: <strong>{{ campaign.message_mode or 'text' }}</strong> &middot; category: <strong>{{ campaign.category }}</strong> &middot; sender: <strong>{{ campaign.from_number }}</strong>
+    {% if campaign.message_mode == 'template' %}&middot; template: <code>{{ campaign.template_slug }}</code> ({{ campaign.template_scope or 'scope not set' }}){% endif %}</p>
+  {% if preview_content %}<div class="sms-bubble" style="max-width:420px;white-space:pre-wrap">{{ preview_content }}</div>{% endif %}
+</section>
+
+<section>
+  <div class="section-head"><h2>Recipients</h2><span class="muted">{{ total }} total, showing {{ recipients|length }}</span></div>
+  {% if recipients %}
+  <table class="table">
+    <thead><tr><th>Phone</th><th>Name</th><th>Status</th><th>Segments</th><th>Cost</th><th>Error</th></tr></thead>
+    <tbody>
+      {% for r in recipients %}{% set ct = r.contact or {} %}
+      <tr><td>{{ ct.get('phone') or r.contact_id }}</td><td>{{ ((ct.get('first_name') or '') ~ ' ' ~ (ct.get('last_name') or '')).strip() }}</td>
+        <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td><td>{{ r.segments or 0 }}</td><td>${{ '%.4f'|format((r.cost or 0)|float) }}</td>
+        <td class="muted small">{{ r.error_description or r.last_error or '' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No recipients attached yet.</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Reuse audience</h2>
+  <p class="muted small">New: contacts never messaged by this campaign. Previous: only recipients of this campaign. All: both.</p>
+  <p class="muted small">New {{ reuse_counts.get('new', 0) }} &middot; Previous {{ reuse_counts.get('previous', 0) }} &middot; All {{ reuse_counts.get('all', 0) }}</p>
+  <div class="actions">
+    <button type="button" class="btn" data-bird-clone="new">Clone to new audience</button>
+    <button type="button" class="btn" data-bird-clone="previous">Reuse this audience</button>
+    <button type="button" class="btn" data-bird-clone="all">Clone with all</button>
+  </div>
+  <p id="bird-clone-status" class="muted small"></p>
+</section>
+{% endblock %}

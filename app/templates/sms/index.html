@@ -1,0 +1,133 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}B SMS &middot; webmailer{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h1>B SMS home</h1>
+  <div class="actions">
+    <button type="button" class="btn" id="sms-credits-refresh" title="Re-fetch the balance from Brevo">Refresh credits</button>
+    <a class="btn btn-primary" href="{{ url_for('web.sms_campaign_new') }}">New B SMS campaign</a>
+  </div>
+</div>
+
+{% if settings.get('sending_paused') %}
+<p class="notice">All SMS sending is <strong>paused</strong> by the SMS kill switch.
+  <a class="link" href="{{ url_for('web.sms_settings_page') }}">Re-enable it in B SMS settings</a>.</p>
+{% endif %}
+
+<section class="cards">
+  <div class="card">
+    <span class="card-value">{{ totals.contacts }}</span>
+    <span class="card-label">B SMS contacts</span>
+  </div>
+  <div class="card">
+    <span class="card-value">{{ totals.active }}</span>
+    <span class="card-label">Sendable</span>
+  </div>
+  <div class="card">
+    <span class="card-value">{{ totals.lists }}</span>
+    <span class="card-label">Lists</span>
+  </div>
+  <div class="card {% if totals.sending %}card-live{% endif %}">
+    <span class="card-value">{{ totals.sending }}</span>
+    <span class="card-label">Sending now</span>
+  </div>
+</section>
+
+<section class="panel sms-credit-panel" id="sms-credit-panel"
+         data-credits='{{ credits | tojson }}'>
+  <div class="panel-head">
+    <h2>Brevo Brevo SMS plan &amp; credits</h2>
+    <span class="badge badge-priority">{{ plan.label }}</span>
+  </div>
+  <div class="sms-credit-grid">
+    <div>
+      <span class="card-value" id="sms-credit-value">
+        {% if credits.get('credits') is not none %}{{ credits.get('credits') }}{% else %}&mdash;{% endif %}
+      </span>
+      <span class="card-label">Credits remaining</span>
+      <p class="muted small" id="sms-credit-note">
+        {% if credits.get('available') %}
+          {{ credits.get('credits_type') or 'SMS credits' }} &middot; cached from Brevo.
+        {% else %}
+          Balance unavailable (check the Brevo API key) &mdash; the refresh button retries.
+        {% endif %}
+      </p>
+      <p class="notice small" id="sms-credit-low" {% if not credits.get('low') %}hidden{% endif %}>
+        Low balance: below {{ credits.get('threshold') or settings.get('low_credit_threshold') }} credits.
+        Top up before starting a large campaign.
+      </p>
+    </div>
+    <div class="sms-plan-facts">
+      <div><span class="muted small">Send rate</span><strong>{{ settings.get('send_rate_per_minute') or plan.recommended.send_rate_per_minute }}/min</strong></div>
+      <div><span class="muted small">Hourly cap</span><strong>{{ settings.get('max_recipients_per_hour') or plan.recommended.max_recipients_per_hour }}</strong></div>
+      <div><span class="muted small">Daily cap</span><strong>{{ settings.get('max_recipients_per_day') or plan.recommended.max_recipients_per_day }}</strong></div>
+      <div><span class="muted small">Daily credits</span><strong>{{ settings.get('max_credits_per_day') or plan.recommended.max_credits_per_day }}</strong></div>
+      <div><span class="muted small">Sender ID</span><strong>{{ settings.get('sms_sender') or 'not set' }}</strong></div>
+      <div><span class="muted small">Type</span><strong>{{ settings.get('default_sms_type') or 'transactional' }}</strong></div>
+    </div>
+  </div>
+  <p class="muted small">{{ plan.note }}</p>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Campaign status</h2>
+    <a class="link small" href="{{ url_for('web.sms_settings_page') }}">B SMS settings</a>
+  </div>
+  <div class="pill-row">
+    {% for status in status_order %}
+      <span class="badge badge-{{ status }}">{{ status }}: {{ status_counts.get(status, 0) }}</span>
+    {% endfor %}
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <h2>Recent B SMS campaigns</h2>
+    <a class="btn btn-ghost" href="{{ url_for('web.sms_campaign_new') }}">New campaign</a>
+  </div>
+  {% if campaigns %}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Name</th><th>Status</th>
+        <th class="num">Sent</th><th class="num">Delivered</th><th class="num">Credits</th>
+        <th>Created</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in campaigns %}
+      {% set stats = c.stats or {} %}
+      <tr {% if loop.index > 5 %}data-see-more hidden{% endif %}>
+        <td>
+          {{ c.name }}
+          {% if c.priority == 'high' %}<span class="badge badge-priority">high</span>{% endif %}
+        </td>
+        <td><span class="badge badge-{{ c.status }}">{{ c.status }}</span></td>
+        <td class="num">{{ stats.get('sent', 0) }}</td>
+        <td class="num">{{ stats.get('delivered', 0) }}</td>
+        <td class="num">{{ stats.get('credits_used', 0) }}</td>
+        <td class="muted">{{ c.created_at[:19].replace('T', ' ') if c.created_at else '' }}</td>
+        <td><a class="link" href="{{ url_for('web.sms_campaign_detail', campaign_id=c.id) }}">View</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if campaigns|length > 5 %}
+  <p class="see-more-row"><button class="btn btn-ghost" data-sms-see-more>See all {{ campaigns|length }}</button></p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No B SMS campaigns yet.
+    <a class="link" href="{{ url_for('web.sms_campaign_new') }}">Create one</a>.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Quick actions</h2>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('web.sms_contacts_page') }}">Manage contacts</a>
+    <a class="btn" href="{{ url_for('web.sms_templates_page') }}">Templates</a>
+    <a class="btn" href="{{ url_for('web.sms_settings_page') }}">Sending settings</a>
+  </div>
+</section>
+{% endblock %}

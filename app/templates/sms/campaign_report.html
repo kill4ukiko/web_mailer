@@ -1,0 +1,57 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}Report &middot; {{ campaign.name }} &middot; SMS{% endblock %}
+{% block content %}
+<p><a class="link" href="{{ url_for('web.sms_campaign_detail', campaign_id=campaign.id) }}">&larr; {{ campaign.name }}</a></p>
+<h1>SMS report</h1>
+<p class="muted">
+  Click a category to drill into recipients. Export the current view as CSV for
+  reconciliation with Brevo.
+</p>
+
+<div class="pill-row">
+  {% for c in categories %}
+  <a class="pill{{ ' pill-active' if category == c else '' }}"
+     href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id, category=c) }}">
+    {{ c.replace('_', ' ') }}: {{ counts.get(c, 0) }}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="actions" style="margin-top:16px">
+  <h2 style="margin:0">{{ category.replace('_', ' ') }} &middot; {{ counts.get(category, 0) }}</h2>
+  <a class="btn btn-sm" href="{{ url_for('sms_campaigns.campaign_report', campaign_id=campaign.id, category=category, format='csv') }}">Download CSV</a>
+</div>
+
+{% if rows %}
+<div class="stage-scroll">
+<table class="table">
+  <thead>
+    <tr>
+      <th>Phone</th><th>First name</th><th>Last name</th><th>Contact status</th>
+      <th>Recipient status</th><th>Sent</th><th>Delivered</th>
+      <th class="num">Segments</th><th class="num">Credits</th><th>Message ID</th><th>Error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.phone or '' }}</td>
+      <td>{{ r.first_name or '' }}</td>
+      <td>{{ r.last_name or '' }}</td>
+      <td><span class="badge badge-{{ r.contact_status }}">{{ r.contact_status or 'â€”' }}</span></td>
+      <td><span class="badge badge-{{ r.recipient_status }}">{{ (r.recipient_status or 'â€”').replace('_', ' ') }}</span></td>
+      <td class="muted">{{ r.sent_at[:19].replace('T', ' ') if r.sent_at else '' }}</td>
+      <td class="muted">{{ r.delivered_at[:19].replace('T', ' ') if r.delivered_at else '' }}</td>
+      <td class="num">{{ r.segments if r.segments is not none else '' }}</td>
+      <td class="num">{{ r.credits_used if r.credits_used is not none else '' }}</td>
+      <td class="muted small">{{ r.message_id or '' }}</td>
+      <td class="muted small">{{ r.last_error or '' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No recipients in this category yet.</p>
+{% endif %}
+{% endblock %}

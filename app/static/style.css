@@ -372,3 +372,36 @@ legend {
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
   padding: 12px 14px; overflow-x: auto; font-size: 13px; white-space: pre-wrap; word-break: break-all;
 }
+
+/* --- Channel chooser --- */
+a.brand { text-decoration: none; }
+.topbar nav a.nav-active { color: var(--accent); }
+.chooser-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.chooser { width: 100%; max-width: 860px; padding: 40px 24px; }
+.chooser-head { text-align: center; margin-bottom: 28px; }
+.chooser-head .brand { font-size: 24px; margin-bottom: 8px; }
+.chooser-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.channel-card {
+  display: flex; flex-direction: column; gap: 12px; align-items: flex-start;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+  padding: 26px; color: inherit; text-decoration: none;
+  transition: border-color .15s, transform .15s;
+}
+.channel-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.channel-card h1 { margin: 0; font-size: 22px; }
+.channel-card p { margin: 0 0 8px; }
+.channel-icon { font-size: 30px; line-height: 1; }
+.chooser-foot { display: flex; justify-content: center; gap: 10px; margin-top: 26px; font-size: 13px; }
+
+/* --- SMS --- */
+.sms-credit-panel .sms-credit-grid { display: grid; grid-template-columns: minmax(180px, 1fr) 2fr; gap: 22px; align-items: start; }
+.sms-plan-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.sms-plan-facts > div { display: flex; flex-direction: column; gap: 2px; }
+.sms-bubble {
+  background: #e9eef8; color: #1a2233; border-radius: 14px;
+  padding: 14px 16px; max-width: 520px; white-space: pre-wrap; word-break: break-word;
+}
+.sms-bubble + .muted { margin-top: 10px; }
+@media (max-width: 640px) {
+  .sms-credit-panel .sms-credit-grid { grid-template-columns: 1fr; }
+}

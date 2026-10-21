@@ -26,6 +26,16 @@ DELIVERY_FILTERS: dict[str, tuple[str, ...]] = {
     "unsubscribed": ("unsubscribed",),
 }
 
+# SMS delivery-lifecycle filter -> stored ``sms_contacts.last_recipient_status``.
+SMS_DELIVERY_FILTERS: dict[str, tuple[str, ...]] = {
+    "sent": ("sent", "accepted", "delivered", "replied"),
+    "delivered": ("delivered", "replied"),
+    "replied": ("replied",),
+    "bounced": ("hard_bounce", "soft_bounce"),
+    "blacklisted": ("blacklisted",),
+    "unsubscribed": ("unsubscribed",),
+}
+
 
 class SupabaseClientError(RuntimeError):
     """Raised when a Supabase operation fails."""
@@ -902,6 +912,821 @@ class SupabaseWrapper:
         payload.setdefault("sender_name", self.settings.default_sender_name)
         payload.setdefault("sender_domain", self.settings.default_sender_domain)
         inserted = self.client.table("mailer_settings").insert(payload).execute().data
+        return inserted[0] if inserted else None
+
+    # ------------------------------------------------------------------ #
+    # SMS: contacts (phone-keyed, fully isolated from email contacts)
+    # ------------------------------------------------------------------ #
+    # Columns an SMS import/re-add must never reset (suppression + lifecycle).
+    _PRESERVED_SMS_CONTACT_COLUMNS = (
+        "status",
+        "safe_to_send",
+        "deleted_at",
+        "last_recipient_status",
+        "last_event_at",
+        "soft_bounce_count",
+        "last_soft_bounce_at",
+    )
+
+    @classmethod
+    def _sms_profile_payload(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Drop suppression/lifecycle columns so an upsert preserves them."""
+        return {k: v for k, v in data.items() if k not in cls._PRESERVED_SMS_CONTACT_COLUMNS}
+
+    def list_sms_contacts(
+        self,
+        page: int = 1,
+        limit: int = 50,
+        status: str | None = None,
+        include_deleted: bool = False,
+        delivery: str | None = None,
+    ) -> dict[str, Any]:
+        def _base(query):
+            if not include_deleted:
+                query = query.is_("deleted_at", "null")
+            if status:
+                query = query.eq("status", status)
+            if delivery:
+                values = SMS_DELIVERY_FILTERS.get(delivery)
+                if values:
+                    if len(values) == 1:
+                        query = query.eq("last_recipient_status", values[0])
+                    else:
+                        query = query.in_("last_recipient_status", values)
+            return query
+
+        query = _base(
+            self.client.table("sms_contacts").select("*").order("created_at", desc=True)
+        ).range((page - 1) * limit, page * limit - 1)
+        data = query.execute().data
+
+        count_query = _base(self.client.table("sms_contacts").select("id", count="exact"))
+        total = count_query.execute().count or 0
+        return {"page": page, "limit": limit, "total": total, "items": data or []}
+
+    def create_sms_contact(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        phone = str(data["phone"]).strip()
+        payload = self._sms_profile_payload({**data, "phone": phone})
+        return (
+            self.client.table("sms_contacts")
+            .upsert(payload, on_conflict="phone")
+            .execute()
+            .data
+        )
+
+    def bulk_insert_sms_contacts(
+        self, contacts: Iterable[dict[str, Any]]
+    ) -> tuple[int, list[str]]:
+        """Upsert phone-keyed contacts; existing suppression is preserved."""
+        rows = [self._sms_profile_payload(dict(c)) for c in contacts]
+        if not rows:
+            return 0, []
+        imported = (
+            self.client.table("sms_contacts")
+            .upsert(rows, on_conflict="phone")
+            .execute()
+            .data
+        )
+        return len(imported or []), []
+
+    def update_sms_contact_status(self, phone: str, status: str) -> None:
+        self.client.table("sms_contacts").update(
+            {"status": status, "safe_to_send": status == "active", "updated_at": "now()"}
+        ).eq("phone", str(phone).strip()).execute()
+
+    def soft_delete_sms_contacts(self, contact_ids: Iterable[str]) -> int:
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        result = (
+            self.client.table("sms_contacts")
+            .update({"deleted_at": "now()", "updated_at": "now()"})
+            .in_("id", ids)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def restore_sms_contacts(self, contact_ids: Iterable[str]) -> int:
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        result = (
+            self.client.table("sms_contacts")
+            .update({"deleted_at": None, "updated_at": "now()"})
+            .in_("id", ids)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def touch_sms_contact_lifecycle(
+        self, phone: str, status: str, when: str | None = None
+    ) -> None:
+        if not phone:
+            return
+        self.client.table("sms_contacts").update({
+            "last_recipient_status": status,
+            "last_event_at": when or "now()",
+        }).eq("phone", str(phone).strip()).execute()
+
+    def bulk_touch_sms_contact_lifecycle(self, phones: Iterable[str], status: str) -> None:
+        cleaned = [str(p).strip() for p in phones if p and str(p).strip()]
+        if not cleaned:
+            return
+        self.client.table("sms_contacts").update({
+            "last_recipient_status": status,
+            "last_event_at": "now()",
+        }).in_("phone", cleaned).execute()
+
+    def register_sms_soft_bounce(self, phone: str, threshold: int) -> bool:
+        """Bump an SMS contact's soft-bounce tally; suppress at ``threshold``."""
+        phone = str(phone).strip()
+        rows = (
+            self.client.table("sms_contacts")
+            .select("id,soft_bounce_count")
+            .eq("phone", phone)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return False
+        count = int(rows[0].get("soft_bounce_count") or 0) + 1
+        suppressed = threshold > 0 and count >= threshold
+        update: dict[str, Any] = {
+            "soft_bounce_count": count,
+            "last_soft_bounce_at": "now()",
+        }
+        if suppressed:
+            update["status"] = "bounced_soft"
+            update["safe_to_send"] = False
+        self.client.table("sms_contacts").update(update).eq("phone", phone).execute()
+        return suppressed
+
+    def delete_sms_contacts(self, contact_ids: Iterable[str]) -> int:
+        ids = [cid for cid in contact_ids if cid]
+        if not ids:
+            return 0
+        result = self.client.table("sms_contacts").delete().in_("id", ids).execute()
+        return len(result.data or [])
+
+    def update_sms_contact(self, contact_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        payload = {k: v for k, v in data.items() if v is not None or k == "metadata"}
+        if payload.get("phone") is not None:
+            payload["phone"] = str(payload["phone"]).strip()
+        payload["updated_at"] = "now()"
+        row = (
+            self.client.table("sms_contacts")
+            .update(payload)
+            .eq("id", contact_id)
+            .execute()
+            .data
+        )
+        return row[0] if row else None
+
+    def delete_sms_contact(self, contact_id: str) -> bool:
+        result = (
+            self.client.table("sms_contacts").delete().eq("id", contact_id).execute()
+        )
+        return bool(result.data)
+
+    def search_sms_contacts(self, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        q = (query or "").strip()
+        base = self.client.table("sms_contacts").select(
+            "id,phone,first_name,last_name,status"
+        )
+        if q:
+            escaped = q.replace(",", " ")
+            base = base.or_(
+                f"phone.ilike.%{escaped}%,first_name.ilike.%{escaped}%,"
+                f"last_name.ilike.%{escaped}%"
+            )
+        return base.order("created_at", desc=True).limit(limit).execute().data or []
+
+    def ensure_sms_contacts(self, rows: Iterable[dict[str, Any]]) -> dict[str, str]:
+        """Create any missing SMS contacts, returning a ``phone -> id`` map.
+
+        Unknown phones are created (DB defaults make them ``active``); existing
+        contacts keep their suppression / soft-delete state.
+        """
+        prepared: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            phone = str(row.get("phone") or "").strip()
+            if not phone or phone in seen:
+                continue
+            seen.add(phone)
+            entry: dict[str, Any] = {"phone": phone}
+            for field in ("country", "first_name", "last_name", "metadata"):
+                if row.get(field) is not None:
+                    entry[field] = row[field]
+            prepared.append(entry)
+
+        if not prepared:
+            return {}
+        data = (
+            self.client.table("sms_contacts")
+            .upsert(prepared, on_conflict="phone")
+            .execute()
+            .data
+            or []
+        )
+        return {r["phone"]: r["id"] for r in data if r.get("phone") and r.get("id")}
+
+    # ------------------------------------------------------------------ #
+    # SMS: campaigns
+    # ------------------------------------------------------------------ #
+    def create_sms_campaign(self, data: dict[str, Any]) -> dict[str, Any]:
+        row = self.client.table("sms_campaigns").insert(data).execute().data
+        if not row:
+            raise SupabaseClientError("sms_campaign insert returned no row")
+        return row[0]
+
+    def get_sms_campaign(self, campaign_id: str) -> dict[str, Any] | None:
+        data = (
+            self.client.table("sms_campaigns").select("*").eq("id", campaign_id).execute().data
+        )
+        return data[0] if data else None
+
+    def update_sms_campaign(
+        self, campaign_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        row = (
+            self.client.table("sms_campaigns")
+            .update(data)
+            .eq("id", campaign_id)
+            .execute()
+            .data
+        )
+        return row[0] if row else None
+
+    def delete_sms_campaign(self, campaign_id: str) -> bool:
+        result = (
+            self.client.table("sms_campaigns").delete().eq("id", campaign_id).execute()
+        )
+        return bool(result.data)
+
+    def set_sms_priority(self, campaign_id: str, priority: str) -> dict[str, Any] | None:
+        row = (
+            self.client.table("sms_campaigns")
+            .update({"priority": priority})
+            .eq("id", campaign_id)
+            .execute()
+            .data
+        )
+        return row[0] if row else None
+
+    def _sms_contact_ids_for(self, rows: Iterable[dict[str, Any]]) -> list[str]:
+        rows = list(rows)
+        if not rows:
+            return []
+        return list(self.ensure_sms_contacts(rows).values())
+
+    def add_sms_recipients(
+        self, campaign_id: str, contact_rows: Iterable[dict[str, Any]]
+    ) -> int:
+        rows = [
+            {"campaign_id": campaign_id, "contact_id": contact_id}
+            for contact_id in self._sms_contact_ids_for(contact_rows)
+        ]
+        if not rows:
+            return 0
+        result = self.client.table("sms_recipients").upsert(
+            rows, on_conflict="campaign_id,contact_id"
+        ).execute()
+        return len(result.data or [])
+
+    def add_sms_recipient_ids(
+        self, campaign_id: str, contact_ids: Iterable[str]
+    ) -> int:
+        rows = [
+            {"campaign_id": campaign_id, "contact_id": cid} for cid in set(contact_ids)
+        ]
+        if not rows:
+            return 0
+        result = self.client.table("sms_recipients").upsert(
+            rows, on_conflict="campaign_id,contact_id"
+        ).execute()
+        return len(result.data or [])
+
+    def list_sms_recipients(
+        self, campaign_id: str, status: str | None = None, limit: int = 1000
+    ) -> list[dict[str, Any]]:
+        query = self.client.table("sms_recipients").select("*").eq(
+            "campaign_id", campaign_id
+        ).limit(limit)
+        if status:
+            query = query.eq("status", status)
+        return query.execute().data or []
+
+    def find_sms_recipient_by_message_id(self, message_id: str) -> dict[str, Any] | None:
+        """Resolve the recipient row a Brevo SMS webhook refers to."""
+        if not message_id:
+            return None
+        data = (
+            self.client.table("sms_recipients")
+            .select("*")
+            .eq("message_id", str(message_id))
+            .limit(1)
+            .execute()
+            .data
+        )
+        return data[0] if data else None
+
+    def update_sms_recipient(self, recipient_id: str, data: dict[str, Any]) -> None:
+        self.client.table("sms_recipients").update(data).eq("id", recipient_id).execute()
+
+    def bulk_update_sms_recipients(
+        self, recipient_ids: Iterable[str], data: dict[str, Any]
+    ) -> None:
+        ids = list(recipient_ids)
+        if not ids:
+            return
+        self.client.table("sms_recipients").update(data).in_("id", ids).execute()
+
+    def count_sms_recipients(self, campaign_id: str, status: str | None = None) -> int:
+        query = self.client.table("sms_recipients").select("id", count="exact").eq(
+            "campaign_id", campaign_id
+        )
+        if status:
+            query = query.eq("status", status)
+        return query.execute().count or 0
+
+    def count_sms_sent_since(self, since_iso: str) -> int:
+        """Count SMS sent at/after ``since_iso`` across all campaigns (caps)."""
+        query = (
+            self.client.table("sms_recipients")
+            .select("id", count="exact")
+            .gte("sent_at", since_iso)
+        )
+        return query.execute().count or 0
+
+    def count_sms_credits_since(self, since_iso: str) -> int:
+        """Sum credits billed at/after ``since_iso`` (daily credit ceiling)."""
+        rows = (
+            self.client.table("sms_recipients")
+            .select("credits_used")
+            .gte("sent_at", since_iso)
+            .execute()
+            .data
+            or []
+        )
+        total = 0.0
+        for row in rows:
+            try:
+                total += float(row.get("credits_used") or 0)
+            except (TypeError, ValueError):
+                continue
+        return int(total)
+
+    def reset_sms_recipients(
+        self, campaign_id: str, contact_ids: Iterable[str] | None = None
+    ) -> int:
+        payload = {
+            "status": "queued",
+            "sent_at": None,
+            "claimed_at": None,
+            "delivered_at": None,
+            "last_error": None,
+            "message_id": None,
+            "segments": None,
+            "credits_used": None,
+        }
+        query = (
+            self.client.table("sms_recipients")
+            .update(payload)
+            .eq("campaign_id", campaign_id)
+        )
+        if contact_ids is not None:
+            ids = list(contact_ids)
+            if not ids:
+                return 0
+            query = query.in_("contact_id", ids)
+        result = query.execute()
+        return len(result.data or [])
+
+    def list_active_sms_campaigns(self) -> list[dict[str, Any]]:
+        data = (
+            self.client.table("sms_campaigns")
+            .select("*")
+            .in_("status", ["scheduled", "sending"])
+            .execute()
+            .data
+        )
+        return data or []
+
+    def list_sending_sms_campaigns(self) -> list[dict[str, Any]]:
+        data = (
+            self.client.table("sms_campaigns")
+            .select("*")
+            .eq("status", "sending")
+            .execute()
+            .data
+        )
+        return data or []
+
+    def list_held_sms_campaigns(self) -> list[dict[str, Any]]:
+        data = (
+            self.client.table("sms_campaigns")
+            .select("*")
+            .eq("status", "held")
+            .execute()
+            .data
+        )
+        return data or []
+
+    def list_due_scheduled_sms(self) -> list[dict[str, Any]]:
+        from app.core.scheduling import is_due
+
+        rows = (
+            self.client.table("sms_campaigns")
+            .select("*")
+            .eq("status", "scheduled")
+            .execute()
+            .data
+            or []
+        )
+        return [row for row in rows if is_due(row.get("schedule_at"))]
+
+    def list_engagement_sms_campaigns(self, hours: int = 24) -> list[dict[str, Any]]:
+        from datetime import datetime, timedelta, timezone
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        rows = (
+            self.client.table("sms_campaigns")
+            .select("*")
+            .in_("status", ["sending", "completed"])
+            .execute()
+            .data
+            or []
+        )
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if row.get("status") == "sending":
+                out.append(row)
+            elif str(row.get("finished_at") or "") >= since:
+                out.append(row)
+        return out
+
+    def increment_sms_stats(self, campaign_id: str, field: str, delta: int = 1) -> None:
+        campaign = self.get_sms_campaign(campaign_id)
+        if campaign is None:
+            return
+        stats = dict(campaign.get("stats") or {})
+        stats[field] = stats.get(field, 0) + delta
+        self.client.table("sms_campaigns").update({"stats": stats}).eq(
+            "id", campaign_id
+        ).execute()
+
+    def get_sms_campaign_metrics(self, campaign_id: str) -> dict[str, int | float]:
+        campaigns = (
+            self.client.table("sms_campaigns")
+            .select("stats")
+            .eq("id", campaign_id)
+            .execute()
+            .data
+        )
+        stats = (campaigns[0] or {}).get("stats", {}) if campaigns else {}
+        return {
+            "sent": stats.get("sent", 0),
+            "delivered": stats.get("delivered", 0),
+            "bounces": stats.get("bounces", 0),
+            "skipped": stats.get("skipped", 0),
+            "failed": stats.get("failed", 0),
+            "credits_used": stats.get("credits_used", 0),
+        }
+
+    def thread_sms_root(self, campaign_id: str) -> str | None:
+        campaign = self.get_sms_campaign(campaign_id)
+        if campaign is None:
+            return None
+        return campaign.get("reuse_root_id") or campaign["id"]
+
+    def thread_sms_campaign_ids(self, root_id: str) -> list[str]:
+        rows = (
+            self.client.table("sms_campaigns")
+            .select("id")
+            .eq("reuse_root_id", root_id)
+            .execute()
+            .data
+            or []
+        )
+        ids = {r["id"] for r in rows}
+        ids.add(root_id)
+        return sorted(ids)
+
+    def thread_sms_contact_ids(self, root_id: str) -> list[str]:
+        campaign_ids = self.thread_sms_campaign_ids(root_id)
+        if not campaign_ids:
+            return []
+        rows = (
+            self.client.table("sms_recipients")
+            .select("contact_id")
+            .in_("campaign_id", campaign_ids)
+            .execute()
+            .data
+            or []
+        )
+        return sorted({r["contact_id"] for r in rows})
+
+    def sms_campaign_target_contact_ids(self, campaign_id: str) -> list[str]:
+        lists = self.list_sms_campaign_lists(campaign_id)
+        if lists:
+            return sorted(self.sms_contact_ids_for_lists([l["id"] for l in lists]))
+        data = self.list_sms_contacts(page=1, limit=100000)
+        return sorted(c["id"] for c in data["items"] if c.get("status") == "active")
+
+    # ------------------------------------------------------------------ #
+    # SMS: stored procedures
+    # ------------------------------------------------------------------ #
+    def claim_sms_recipients(self, campaign_id: str, limit: int) -> list[dict[str, Any]]:
+        data = self.client.rpc("claim_sms_recipients", {
+            "p_campaign_id": campaign_id,
+            "p_limit": limit,
+        }).execute().data
+        return data or []
+
+    def suppress_sms_contact(self, phone: str, reason: str) -> None:
+        self.client.rpc("suppress_sms_contact", {
+            "p_phone": phone,
+            "p_reason": reason,
+        }).execute()
+
+    def requeue_stale_sms_recipients(self, timeout_seconds: int = 900) -> int:
+        result = self.client.rpc(
+            "requeue_stale_sms_recipients", {"p_timeout_seconds": timeout_seconds}
+        ).execute()
+        return int(result.data or 0)
+
+    # ------------------------------------------------------------------ #
+    # SMS: events
+    # ------------------------------------------------------------------ #
+    def record_sms_event(
+        self,
+        event_type: str,
+        campaign_id: str | None = None,
+        recipient_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist an SMS delivery/webhook event; best-effort, never raising."""
+        payload: dict[str, Any] = {
+            "event_type": event_type,
+            "raw_payload": raw_payload or {},
+        }
+        if campaign_id:
+            payload["campaign_id"] = campaign_id
+        if recipient_id:
+            payload["recipient_id"] = recipient_id
+        try:
+            self.client.table("sms_events").insert(payload).execute()
+            return
+        except Exception as exc:  # noqa: BLE001 - see docstring
+            logger.warning("record_sms_event failed (%s); retrying without FKs", exc)
+        anonymous = {
+            k: v for k, v in payload.items() if k not in ("campaign_id", "recipient_id")
+        }
+        try:
+            self.client.table("sms_events").insert(anonymous).execute()
+        except Exception as exc:  # noqa: BLE001 - give up, but never raise
+            logger.error("record_sms_event could not be stored: %s", exc)
+
+    # ------------------------------------------------------------------ #
+    # SMS: lists
+    # ------------------------------------------------------------------ #
+    def list_sms_lists(self) -> list[dict[str, Any]]:
+        lists = (
+            self.client.table("sms_lists").select("*").order("name").execute().data or []
+        )
+        members = (
+            self.client.table("sms_list_members").select("list_id").execute().data or []
+        )
+        counts: dict[str, int] = {}
+        for row in members:
+            counts[row["list_id"]] = counts.get(row["list_id"], 0) + 1
+        for entry in lists:
+            entry["member_count"] = counts.get(entry["id"], 0)
+        return lists
+
+    def create_sms_list(self, name: str, description: str | None = None) -> dict[str, Any]:
+        row = (
+            self.client.table("sms_lists")
+            .insert({"name": name, "description": description, "created_at": "now()"})
+            .execute()
+            .data
+        )
+        if not row:
+            raise SupabaseClientError("sms_list insert returned no row")
+        return row[0]
+
+    def get_sms_list(self, list_id: str) -> dict[str, Any] | None:
+        data = self.client.table("sms_lists").select("*").eq("id", list_id).execute().data
+        return data[0] if data else None
+
+    def update_sms_list(self, list_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
+        row = (
+            self.client.table("sms_lists")
+            .update({**data, "updated_at": "now()"})
+            .eq("id", list_id)
+            .execute()
+            .data
+        )
+        return row[0] if row else None
+
+    def delete_sms_list(self, list_id: str) -> bool:
+        result = self.client.table("sms_lists").delete().eq("id", list_id).execute()
+        return bool(result.data)
+
+    def list_sms_members(self, list_id: str) -> list[dict[str, Any]]:
+        memberships = (
+            self.client.table("sms_list_members")
+            .select("contact_id,added_at")
+            .eq("list_id", list_id)
+            .execute()
+            .data
+            or []
+        )
+        ids = [m["contact_id"] for m in memberships]
+        if not ids:
+            return []
+        contacts = (
+            self.client.table("sms_contacts")
+            .select("id,phone,first_name,last_name,status")
+            .in_("id", ids)
+            .execute()
+            .data
+            or []
+        )
+        by_id = {c["id"]: c for c in contacts}
+        added = {m["contact_id"]: m.get("added_at") for m in memberships}
+        return [
+            {**by_id[cid], "added_at": added.get(cid)}
+            for cid in ids
+            if cid in by_id
+        ]
+
+    def add_sms_members(self, list_id: str, contact_ids: Iterable[str]) -> int:
+        rows = [{"list_id": list_id, "contact_id": cid} for cid in set(contact_ids)]
+        if not rows:
+            return 0
+        result = self.client.table("sms_list_members").upsert(
+            rows, on_conflict="list_id,contact_id"
+        ).execute()
+        return len(result.data or [])
+
+    def add_sms_members_by_phone(self, list_id: str, phones: Iterable[str]) -> int:
+        rows = [{"phone": str(p).strip()} for p in phones if p and str(p).strip()]
+        if not rows:
+            return 0
+        return self.add_sms_members(list_id, list(self.ensure_sms_contacts(rows).values()))
+
+    def remove_sms_member(self, list_id: str, contact_id: str) -> bool:
+        result = (
+            self.client.table("sms_list_members")
+            .delete()
+            .eq("list_id", list_id)
+            .eq("contact_id", contact_id)
+            .execute()
+        )
+        return bool(result.data)
+
+    def sms_contact_ids_for_lists(self, list_ids: Iterable[str]) -> list[str]:
+        ids = list({lid for lid in list_ids if lid})
+        if not ids:
+            return []
+        rows = (
+            self.client.table("sms_list_members")
+            .select("contact_id")
+            .in_("list_id", ids)
+            .execute()
+            .data
+            or []
+        )
+        return list({r["contact_id"] for r in rows})
+
+    def add_sms_campaign_lists(self, campaign_id: str, list_ids: Iterable[str]) -> int:
+        rows = [{"campaign_id": campaign_id, "list_id": lid} for lid in set(list_ids)]
+        if not rows:
+            return 0
+        result = self.client.table("sms_campaign_lists").upsert(
+            rows, on_conflict="campaign_id,list_id"
+        ).execute()
+        return len(result.data or [])
+
+    def list_sms_campaign_lists(self, campaign_id: str) -> list[dict[str, Any]]:
+        rows = (
+            self.client.table("sms_campaign_lists")
+            .select("list_id")
+            .eq("campaign_id", campaign_id)
+            .execute()
+            .data
+            or []
+        )
+        ids = [r["list_id"] for r in rows]
+        if not ids:
+            return []
+        return (
+            self.client.table("sms_lists").select("*").in_("id", ids).execute().data or []
+        )
+
+    def replace_sms_campaign_lists(
+        self, campaign_id: str, list_ids: Iterable[str]
+    ) -> None:
+        self.client.table("sms_campaign_lists").delete().eq(
+            "campaign_id", campaign_id
+        ).execute()
+        self.add_sms_campaign_lists(campaign_id, list_ids)
+
+    def remove_sms_campaign_list(self, campaign_id: str, list_id: str) -> bool:
+        result = (
+            self.client.table("sms_campaign_lists")
+            .delete()
+            .eq("campaign_id", campaign_id)
+            .eq("list_id", list_id)
+            .execute()
+        )
+        return bool(result.data)
+
+    # ------------------------------------------------------------------ #
+    # SMS: templates
+    # ------------------------------------------------------------------ #
+    def list_sms_templates(self) -> list[dict[str, Any]]:
+        return (
+            self.client.table("sms_templates")
+            .select("*")
+            .order("updated_at", desc=True)
+            .execute()
+            .data
+            or []
+        )
+
+    def get_sms_template(self, template_id: str) -> dict[str, Any] | None:
+        data = (
+            self.client.table("sms_templates").select("*").eq("id", template_id).execute().data
+        )
+        return data[0] if data else None
+
+    def create_sms_template(
+        self,
+        name: str,
+        content: str,
+        sms_type: str = "transactional",
+        unicode_enabled: bool = False,
+        organisation_prefix: str | None = None,
+    ) -> dict[str, Any]:
+        row = (
+            self.client.table("sms_templates")
+            .insert({
+                "name": name,
+                "content": content,
+                "sms_type": sms_type,
+                "unicode_enabled": unicode_enabled,
+                "organisation_prefix": organisation_prefix,
+            })
+            .execute()
+            .data
+        )
+        if not row:
+            raise SupabaseClientError("sms_template insert returned no row")
+        return row[0]
+
+    def update_sms_template(
+        self, template_id: str, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        row = (
+            self.client.table("sms_templates")
+            .update({**data, "updated_at": "now()"})
+            .eq("id", template_id)
+            .execute()
+            .data
+        )
+        return row[0] if row else None
+
+    def delete_sms_template(self, template_id: str) -> bool:
+        result = (
+            self.client.table("sms_templates").delete().eq("id", template_id).execute()
+        )
+        return bool(result.data)
+
+    # ------------------------------------------------------------------ #
+    # SMS: settings
+    # ------------------------------------------------------------------ #
+    def get_sms_settings_row(self) -> dict[str, Any] | None:
+        data = self.client.table("sms_settings").select("*").limit(1).execute().data
+        return data[0] if data else None
+
+    def update_sms_settings(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        """Update the single sms_settings row, creating it if absent."""
+        row = self.get_sms_settings_row()
+        payload = {**data, "updated_at": "now()"}
+        if row:
+            updated = (
+                self.client.table("sms_settings")
+                .update(payload)
+                .eq("id", row["id"])
+                .execute()
+                .data
+            )
+            return updated[0] if updated else None
+        inserted = self.client.table("sms_settings").insert(payload).execute().data
         return inserted[0] if inserted else None
 
     def ping(self) -> bool:

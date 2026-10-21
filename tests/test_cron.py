@@ -41,6 +41,30 @@ def test_tick_sends_queued_recipients(supabase, monkeypatch):
     assert supabase.get_campaign(campaign["id"])["status"] == "completed"
 
 
+def test_tick_skips_paced_campaigns(supabase, monkeypatch):
+    """A campaign with a future next_send_at must not spin the tick."""
+    from datetime import datetime, timedelta, timezone
+
+    from app import cron
+
+    campaign = _sending_campaign(supabase, n=2)
+    campaign["next_send_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=40)
+    ).isoformat()
+
+    sent: list = []
+    monkeypatch.setattr(
+        "app.core.brevo.BrevoClient.send_batch",
+        lambda self, recipients, **k: sent.append(recipients) or [],
+    )
+    monkeypatch.setattr("app.cron._maybe_progress_alert", lambda **k: None)
+
+    result = cron.tick(budget_seconds=2.0)
+    assert result["cycles"] == 0
+    assert sent == []
+    assert all(r["status"] == "queued" for r in supabase.recipients)
+
+
 def test_cron_tick_promotes_due_scheduled(supabase, monkeypatch):
     from app import cron
 
@@ -78,4 +102,3 @@ def test_bootstrap_seeds_settings_when_missing(supabase, monkeypatch):
     assert result["migrations"] == "ok"
     assert result["settings"] == "seeded"
     assert supabase.settings_row is not None
-

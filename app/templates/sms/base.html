@@ -1,0 +1,7 @@
+﻿{% extends "base.html" %}
+{% block nav %}
+{% include "sms/_nav.html" %}
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='sms.js') }}"></script>
+{% endblock %}

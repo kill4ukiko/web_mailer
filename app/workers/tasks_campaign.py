@@ -18,19 +18,46 @@ from __future__ import annotations
 
 import logging
 
-from app.config import MAX_BATCH_SIZE, MAX_SEND_RATE_PER_MINUTE, get_settings
+from app.config import (
+    MAX_BATCH_SIZE,
+    MAX_CYCLE_SECONDS,
+    MAX_SEND_RATE_PER_MINUTE,
+    STALE_CLAIM_TIMEOUT_SECONDS,
+    get_settings,
+)
 from app.core.budget import tick_budgets
 from app.core.mailer_config import effective_base_url, effective_settings
-from app.core.pacing import PacingGate
-from app.core.scheduling import seconds_until_window_open
+from app.core.pacing import PacingGate, plan_cycle
+from app.core.scheduling import seconds_until_window_close, seconds_until_window_open
+from app.workers.campaign_helpers import MAX_DEFER_SECONDS, _seconds_until
 from app.workers.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
-# Cap how long we'll sleep in a single deferred task before re-checking.
-MAX_DEFER_SECONDS = 3600
 # How long to wait before retrying once a rate cap has been hit.
 CAP_RETRY_SECONDS = 120
+
+
+def _set_next_send_at(supabase, campaign_id: str, seconds: float | None) -> None:
+    """Persist when the next paced send may run (None clears the hold-off)."""
+    from datetime import datetime, timedelta, timezone
+
+    if seconds and seconds > 0:
+        until = (datetime.now(timezone.utc) + timedelta(seconds=float(seconds))).isoformat()
+    else:
+        until = None
+    supabase.update_campaign(campaign_id, {"next_send_at": until})
+
+
+def _stagger_seconds(campaign: dict, settings: dict) -> int:
+    """Per-email jitter: campaign override, then global default."""
+    value = campaign.get("stagger_seconds")
+    if value is None:
+        value = settings.get("default_stagger_seconds")
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 @celery.task(name="app.workers.tasks_campaign.send_campaign", bind=True, max_retries=None)
@@ -73,6 +100,12 @@ def _send_once(campaign_id: str) -> dict:
         return {"campaign_id": campaign_id, "status": "paused_by_killswitch",
                 "requeue_in": CAP_RETRY_SECONDS}
 
+    # --- Pacing hold-off: honour the jitter deferred by the previous cycle. ---
+    paced_wait = _seconds_until(campaign.get("next_send_at"))
+    if paced_wait > 0:
+        return {"campaign_id": campaign_id, "status": "deferred",
+                "requeue_in": min(paced_wait, MAX_DEFER_SECONDS)}
+
     # --- Delivery window gate: defer if outside the allowed window. ---
     wait = seconds_until_window_open(
         campaign.get("window_start"),
@@ -83,6 +116,12 @@ def _send_once(campaign_id: str) -> dict:
         countdown = min(wait, MAX_DEFER_SECONDS)
         logger.info("campaign %s outside delivery window; retrying in %ss", campaign_id, countdown)
         return {"campaign_id": campaign_id, "status": "deferred", "requeue_in": countdown}
+
+    window_remaining = seconds_until_window_close(
+        campaign.get("window_start"),
+        campaign.get("window_end"),
+        campaign.get("window_timezone"),
+    )
 
     # --- Fair-share budget (global caps + priority). ---
     batch_size = min(
@@ -101,7 +140,29 @@ def _send_once(campaign_id: str) -> dict:
         return {"campaign_id": campaign_id, "status": "deferred", "requeue_in": retry}
 
     effective_rate = _effective_rate(campaign, settings, config)
-    chunk = min(allowance, config.max_sends_per_tick, batch_size)
+    stagger = _stagger_seconds(campaign, settings)
+    plan = plan_cycle(
+        rate=effective_rate,
+        jitter=stagger,
+        allowance=allowance,
+        batch_size=batch_size,
+        max_sends_per_tick=config.max_sends_per_tick,
+        cycle_budget=MAX_CYCLE_SECONDS,
+        window_remaining=window_remaining,
+        stale_limit=STALE_CLAIM_TIMEOUT_SECONDS,
+    )
+    if plan.defer:
+        # Not even one email (with its jitter) fits before the window closes:
+        # keep the queue intact and continue at the next window.
+        next_open = seconds_until_window_open(
+            campaign.get("window_start"),
+            campaign.get("window_end"),
+            campaign.get("window_timezone"),
+        )
+        countdown = min(max(next_open, CAP_RETRY_SECONDS), MAX_DEFER_SECONDS)
+        return {"campaign_id": campaign_id, "status": "deferred", "requeue_in": countdown}
+
+    chunk = plan.chunk
     claimed = supabase.claim_recipients(campaign_id, chunk)
     if not claimed:
         # Nothing claimable -> drain leftover ineligible recipients and finish.
@@ -173,6 +234,7 @@ def _send_once(campaign_id: str) -> dict:
         headers_factory=headers_factory,
         content_factory=content_factory,
         reply_to=settings.get("reply_to_email"),
+        jitter_ms=(0, int(plan.in_batch_jitter * 1000)),
         gate=gate,
         cancel_check=killswitch.is_paused,
     )
@@ -191,10 +253,11 @@ def _send_once(campaign_id: str) -> dict:
     if failed_ids:
         supabase.bulk_update_recipients(failed_ids, {"status": "failed", "last_error": "brevo send failed"})
 
-    # A full chunk means there is (probably) more work -> run again soon; the
-    # pacer guarantees the next send still respects the rate + collisions.
+    # A full chunk means there is (probably) more work -> run again after the
+    # planned wait. That wait carries the per-email jitter (never slept here).
     if len(claimed) >= chunk:
-        requeue_in = max(1, int(60.0 / max(1, effective_rate)))
+        _set_next_send_at(supabase, campaign_id, plan.next_wait)
+        requeue_in = max(1, min(MAX_DEFER_SECONDS, int(round(plan.next_wait))))
     else:
         gate.reset()
         _complete_campaign(supabase, campaign_id)
@@ -255,6 +318,7 @@ def _hold_campaign(supabase, campaign: dict, reason: str, resets_in: int) -> Non
         "status": "held",
         "held_reason": reason,
         "held_until": until,
+        "next_send_at": None,
     })
     try:
         from app.core.alerts import cap_hold
@@ -283,6 +347,7 @@ def _complete_campaign(supabase, campaign_id: str) -> None:
         "status": "completed",
         "circuit_state": "ok",
         "finished_at": "now()",
+        "next_send_at": None,
     })
 
     try:
@@ -397,6 +462,7 @@ def _promote_due(supabase) -> tuple[list[str], list[str]]:
         supabase.update_campaign(campaign_id, {
             "status": "sending",
             "started_at": "now()",
+            "next_send_at": None,
         })
         dispatched.append(campaign_id)
 
@@ -421,6 +487,9 @@ def resume_sending() -> dict:
 
     resumed: list[str] = []
     for campaign in supabase.list_sending_campaigns():
+        # A paced campaign already has its next slot scheduled; don't churn.
+        if _seconds_until(campaign.get("next_send_at")) > 0:
+            continue
         if supabase.count_recipients(campaign["id"], status="queued") > 0:
             send_campaign.apply_async(args=[campaign["id"]], countdown=1)
             resumed.append(campaign["id"])
@@ -478,6 +547,7 @@ def _flip_held_to_sending(supabase) -> tuple[list[str], list[str]]:
             "status": "sending",
             "held_reason": None,
             "held_until": None,
+            "next_send_at": None,
         })
         resumed.append(campaign_id)
 

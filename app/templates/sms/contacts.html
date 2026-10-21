@@ -1,0 +1,194 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}B SMS contacts &middot; webmailer{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h1>B SMS contacts <span class="muted">({{ total }})</span></h1>
+  <div class="actions">
+    <button type="button" class="btn btn-primary" id="sms-toggle-import">Import / add contacts</button>
+  </div>
+</div>
+
+<p class="muted small">
+  Phone numbers are stored in international E.164 format (e.g. <code>+15551234567</code>).
+  This address book is completely separate from email contacts.
+</p>
+
+<section id="sms-import-panel" class="form" hidden>
+  <h2>Import or add contacts</h2>
+  <p class="muted">
+    Upload a CSV or Excel file, map the phone column, edit any staged cell, then
+    choose where the rows go.
+  </p>
+
+  <label>
+    Contact file (.csv, .xls, .xlsx)
+    <input type="file" id="sms-import-file" accept=".csv,.xls,.xlsx">
+  </label>
+  <div class="form-actions">
+    <button type="button" id="sms-preview-btn" class="btn">Read file</button>
+    <span id="sms-import-status" class="muted"></span>
+  </div>
+
+  <div id="sms-mapping-section" hidden>
+    <h3>Map columns</h3>
+    <div class="grid-2">
+      <label>Phone <span class="req">(required)</span>
+        <select id="sms-map-phone" class="map-select" data-field="phone"></select>
+      </label>
+      <label>First name <select id="sms-map-first_name" class="map-select" data-field="first_name"></select></label>
+      <label>Last name <select id="sms-map-last_name" class="map-select" data-field="last_name"></select></label>
+      <label>Country <select id="sms-map-country" class="map-select" data-field="country"></select></label>
+    </div>
+
+    <h3>Keep extra columns as merge fields</h3>
+    <div id="sms-custom-fields" class="pill-row"></div>
+
+    <h3>Staged rows <span class="muted">(edit any cell before saving)</span></h3>
+    <div id="sms-staging-table"></div>
+
+    <fieldset>
+      <legend>Save these contacts to</legend>
+      <label class="checkbox"><input type="radio" name="sms-import-target" value="db" checked> Database only</label>
+      <label class="checkbox"><input type="radio" name="sms-import-target" value="existing"> An existing list
+        <select id="sms-import-target-list">
+          {% for l in lists %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="checkbox"><input type="radio" name="sms-import-target" value="new"> A new list named
+        <input type="text" id="sms-import-target-name" maxlength="255" placeholder="October leads">
+      </label>
+    </fieldset>
+
+    <div class="form-actions">
+      <button type="button" id="sms-import-btn" class="btn btn-primary">Save contacts</button>
+      <span id="sms-import-result" class="muted"></span>
+    </div>
+  </div>
+
+  <fieldset>
+    <legend>Add a single contact</legend>
+    <div class="grid-2">
+      <label>Phone <input type="tel" id="sms-new-phone" placeholder="+15551234567"></label>
+      <label>First name <input type="text" id="sms-new-first" maxlength="255"></label>
+      <label>Last name <input type="text" id="sms-new-last" maxlength="255"></label>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" id="sms-add-contact-btn">Add contact</button>
+      <span id="sms-add-status" class="muted"></span>
+    </div>
+  </fieldset>
+</section>
+
+<h2>Lists</h2>
+<form id="sms-list-create-form" class="form">
+  <fieldset>
+    <legend>New list</legend>
+    <div class="grid-2">
+      <label>List name
+        <input type="text" name="name" required maxlength="255" placeholder="October leads">
+      </label>
+      <label>Description <span class="muted">(optional)</span>
+        <input type="text" name="description" maxlength="1000" placeholder="Signed up at the trade show">
+      </label>
+    </div>
+    <label>Add by phone (created if new)
+      <textarea name="phones" rows="2" placeholder="+15551234567, +15557654321"></textarea>
+      <small class="muted">Comma or newline separated. Invalid numbers are reported back.</small>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Create list</button>
+      <span id="sms-list-status" class="muted"></span>
+    </div>
+  </fieldset>
+</form>
+
+<div id="sms-lists-container">
+  {% for l in lists %}
+  <div class="list-card" data-sms-list-id="{{ l.id }}">
+    <div class="list-head">
+      <div>
+        <strong>{{ l.name }}</strong>
+        <span class="muted">&middot; {{ l.member_count }} contact{{ '' if l.member_count == 1 else 's' }}</span>
+        {% if l.description %}<div class="muted small">{{ l.description }}</div>{% endif %}
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-sm" data-sms-list-toggle="{{ l.id }}">Manage</button>
+        <button type="button" class="btn btn-sm btn-danger" data-sms-delete-list="{{ l.id }}">Delete</button>
+      </div>
+    </div>
+    <div class="list-members" id="sms-members-{{ l.id }}" hidden></div>
+  </div>
+  {% endfor %}
+  {% if not lists %}<p class="muted" id="sms-no-lists">No lists yet &mdash; create one above.</p>{% endif %}
+</div>
+
+<h2>All B SMS contacts</h2>
+<div class="filter-row">
+  <a class="pill{{ ' pill-active' if not status and not show_deleted else '' }}" href="{{ url_for('web.sms_contacts_page') }}">All</a>
+  <a class="pill{{ ' pill-active' if status == 'active' else '' }}" href="{{ url_for('web.sms_contacts_page', status='active') }}">Active</a>
+  <a class="pill{{ ' pill-active' if status == 'unsubscribed' else '' }}" href="{{ url_for('web.sms_contacts_page', status='unsubscribed') }}">Unsubscribed</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_hard' else '' }}" href="{{ url_for('web.sms_contacts_page', status='bounced_hard') }}">Hard bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_soft' else '' }}" href="{{ url_for('web.sms_contacts_page', status='bounced_soft') }}">Soft bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'invalid' else '' }}" href="{{ url_for('web.sms_contacts_page', status='invalid') }}">Invalid</a>
+  <a class="pill{{ ' pill-active' if status == 'blacklisted' else '' }}" href="{{ url_for('web.sms_contacts_page', status='blacklisted') }}">Blacklisted</a>
+  <a class="pill{{ ' pill-active' if show_deleted else '' }}" href="{{ url_for('web.sms_contacts_page', deleted='1') }}">Deleted (restore)</a>
+</div>
+
+{% if contacts %}
+<table class="table" id="sms-contacts-table">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="sms-select-all" aria-label="Select all"></th>
+      <th>Phone</th><th>First name</th><th>Last name</th><th>Status</th><th>Delivery</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in contacts %}
+    <tr data-sms-contact-id="{{ c.id }}">
+      <td><input type="checkbox" class="sms-contact-select" value="{{ c.id }}"></td>
+      <td><input class="inline-edit" data-field="phone" value="{{ c.phone }}"></td>
+      <td><input class="inline-edit" data-field="first_name" value="{{ c.first_name or '' }}"></td>
+      <td><input class="inline-edit" data-field="last_name" value="{{ c.last_name or '' }}"></td>
+      <td><span class="badge badge-{{ c.status }}">{{ c.status }}</span></td>
+      <td>
+        {% if c.last_recipient_status %}
+        <span class="badge badge-delivery-{{ c.last_recipient_status }}">{{ c.last_recipient_status.replace('_', ' ') }}</span>
+        {% else %}<span class="muted">&mdash;</span>{% endif %}
+      </td>
+      <td class="num">
+        <button type="button" class="btn btn-sm" data-sms-save-contact="{{ c.id }}">Save</button>
+        {% if show_deleted %}
+        <button type="button" class="btn btn-sm" data-sms-restore-contact="{{ c.id }}">Restore</button>
+        {% else %}
+        <button type="button" class="btn btn-sm" data-sms-hide-contact="{{ c.id }}">Hide</button>
+        {% endif %}
+        <button type="button" class="btn btn-sm btn-danger" data-sms-delete-contact="{{ c.id }}">Delete</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="actions" id="sms-selected-actions">
+  <span class="muted" id="sms-selected-count">0 selected</span>
+  <select id="sms-selected-list-target">
+    <option value="">Choose a list&hellip;</option>
+    {% for l in lists %}<option value="{{ l.id }}">{{ l.name }}</option>{% endfor %}
+  </select>
+  <button type="button" class="btn btn-sm" id="sms-add-selected-btn">Add selected to list</button>
+  {% if show_deleted %}
+  <button type="button" class="btn btn-sm" id="sms-restore-selected-btn">Restore selected</button>
+  {% else %}
+  <button type="button" class="btn btn-sm" id="sms-hide-selected-btn">Hide selected (keep status)</button>
+  {% endif %}
+  <button type="button" class="btn btn-sm btn-danger" id="sms-delete-selected-btn">Delete selected (permanent)</button>
+</div>
+
+<div class="actions">
+  {% if page > 1 %}<a class="btn" href="{{ url_for('web.sms_contacts_page', page=page-1, status=status, deleted='1' if show_deleted else None) }}">Previous</a>{% endif %}
+  {% if contacts|length == 50 %}<a class="btn" href="{{ url_for('web.sms_contacts_page', page=page+1, status=status, deleted='1' if show_deleted else None) }}">Next</a>{% endif %}
+</div>
+{% else %}
+<p class="muted">No B SMS contacts yet. Use <strong>Import / add contacts</strong> above.</p>
+{% endif %}
+{% endblock %}

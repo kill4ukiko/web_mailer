@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 
+from app.config import STALE_CLAIM_TIMEOUT_SECONDS
 from app.workers.celery_app import celery
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,6 @@ def evaluate_circuit() -> dict:
 
 
 # Claims older than this are considered abandoned (worker crash) and requeued.
-STALE_CLAIM_TIMEOUT_SECONDS = 900
 
 
 @celery.task(name="app.workers.tasks_monitor.reconcile_stuck_campaigns")

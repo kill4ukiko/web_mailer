@@ -40,3 +40,6 @@ Thumbs.db
 celerybeat-schedule
 celerybeat-schedule.*
 *.pid
+
+# Local Redis snapshot
+dump.rdb

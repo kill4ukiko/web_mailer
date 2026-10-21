@@ -151,6 +151,8 @@
         <input type="number" name="stagger_seconds" min="0" max="86400"
                value="{{ campaign.stagger_seconds if campaign else '' }}"
                placeholder="{{ global_defaults.stagger_seconds }}">
+        <small class="muted">Random 0..N second delay between every email
+          (blank = use the global default).</small>
       </label>
       <label>
         Start time <span class="muted">(blank = manual start)</span>

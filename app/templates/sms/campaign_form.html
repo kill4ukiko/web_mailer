@@ -1,0 +1,197 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}{{ 'Edit B SMS campaign' if campaign else 'New B SMS campaign' }} &middot; webmailer{% endblock %}
+{% block content %}
+{% set c = campaign or {} %}
+{% set d = defaults or {} %}
+{% set s = settings or {} %}
+<h1>{{ 'Edit B SMS campaign' if campaign else 'New B SMS campaign' }}</h1>
+<p class="muted">
+  Messages are sent one by one through Brevo with pacing and credit caps.
+  <a class="link" href="{{ url_for('web.sms_settings_page') }}">Global B SMS settings</a>
+  provide the defaults; this page overrides them per campaign.
+</p>
+
+<form id="sms-campaign-form" class="form"
+      {% if campaign %}data-campaign-id="{{ campaign.id }}" data-status="{{ campaign.status }}"{% endif %}>
+  <fieldset>
+    <legend>Campaign</legend>
+    <div class="grid-2">
+      <label>Campaign name
+        <input type="text" name="name" required maxlength="255" placeholder="October reminder"
+               value="{{ c.get('name') or '' }}">
+      </label>
+      <label>Sender ID <button type="button" class="info-icon" data-info="sms_sender">i</button>
+        <input type="text" name="sender" maxlength="15" placeholder="{{ s.get('sms_sender') or 'Acme' }}"
+               value="{{ c.get('sender') or s.get('sms_sender') or '' }}">
+        <small class="muted">
+          {{ 'Numeric sender (max 15 digits)' if s.get('sms_sender_type') == 'numeric' else 'Alphanumeric sender (max 11 characters)' }}.
+          Leave blank to use the global default.
+        </small>
+      </label>
+      <label>Message type
+        {% set sms_type = c.get('sms_type') or d.get('sms_type') or 'transactional' %}
+        <select name="sms_type" id="sms-campaign-type">
+          <option value="transactional" {% if sms_type == 'transactional' %}selected{% endif %}>Transactional</option>
+          <option value="marketing" {% if sms_type == 'marketing' %}selected{% endif %}>Marketing (STOP + compliance)</option>
+        </select>
+      </label>
+      <label>Priority
+        <select name="priority">
+          <option value="normal" {% if c.get('priority') != 'high' %}selected{% endif %}>Normal</option>
+          <option value="high" {% if c.get('priority') == 'high' %}selected{% endif %}>High (jumps the queue)</option>
+        </select>
+        <small class="muted">Only one high-priority B SMS campaign may be active at a time.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Message</legend>
+    {% if templates %}
+    <div class="editor-head">
+      <label class="inline-row">
+        Load from template
+        <select id="sms-template-select">
+          <option value="">Choose a template&hellip;</option>
+          {% for t in templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <span class="muted">Fills the body &mdash; you can still edit it.</span>
+    </div>
+    <script type="application/json" id="sms-templates-data">{{ templates | tojson }}</script>
+    {% endif %}
+
+    <div class="editor-head">
+      <div class="merge-buttons">
+        <span class="muted">Insert:</span>
+        <button type="button" class="chip" data-sms-merge="{{ '{{first_name}}' }}">first_name</button>
+        <button type="button" class="chip" data-sms-merge="{{ '{{last_name}}' }}">last_name</button>
+        <button type="button" class="chip" data-sms-merge="{{ '{{phone}}' }}">phone</button>
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" name="unicode_enabled" {% if c.get('unicode_enabled') or (not campaign and d.get('unicode_enabled')) %}checked{% endif %}>
+        Unicode (emoji / non-Latin)
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="include_stop_code" {% if c.get('include_stop_code') or (not campaign and d.get('include_stop_code')) or sms_type == 'marketing' %}checked{% endif %}>
+        Append STOP line
+      </label>
+    </div>
+
+    <label>
+      Message body
+      <textarea name="content" id="sms-campaign-content" rows="6" required maxlength="1600"
+        placeholder="Hi {{ '{{first_name}}' }}, your appointment is tomorrow at 10:00.">{{ c.get('content') or '' }}</textarea>
+    </label>
+
+    <div id="sms-preview" class="preview-wrap">
+      <h3>Preview <span class="muted small" id="sms-preview-meta"></span></h3>
+      <div class="sms-bubble" id="sms-preview-body">Start typing to see the rendered message.</div>
+    </div>
+
+    <div class="grid-2">
+      <label>Organisation prefix <span class="muted">(optional)</span>
+        <input type="text" name="organisation_prefix" maxlength="64"
+               value="{{ c.get('organisation_prefix') or d.get('organisation_prefix') or '' }}">
+      </label>
+      <label>Schedule at <button type="button" class="info-icon" data-info="sms_schedule">i</button> <span class="muted">(optional)</span>
+        <input type="datetime-local" name="schedule_at"
+               value="{{ c.get('schedule_at')[:16] if c.get('schedule_at') else '' }}">
+        <small class="muted">Leave blank to keep it as a draft you start manually.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Audience</legend>
+    <p class="muted">
+      {% if campaign %}
+        {{ recipient_count }} recipient{{ '' if recipient_count == 1 else 's' }} attached.
+        Saving list changes adds members from the selected lists.
+      {% else %}
+        Select lists and/or paste phone numbers. If you choose neither, every
+        active SMS contact is attached.
+      {% endif %}
+    </p>
+
+    {% if lists %}
+    <div class="checkbox-grid">
+      {% for l in lists %}
+      <label class="checkbox">
+        <input type="checkbox" class="sms-list-picker-item" value="{{ l.id }}"
+               {% if l.id in campaign_list_ids %}checked{% endif %}>
+        {{ l.name }} <span class="muted small">({{ l.member_count }})</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted small">No SMS lists yet.
+      <a class="link" href="{{ url_for('web.sms_contacts_page') }}">Create one</a>.</p>
+    {% endif %}
+
+    {% if not campaign %}
+    <label>
+      Extra phone numbers <span class="muted">(optional)</span>
+      <textarea name="recipient_phones" rows="2"
+        placeholder="+15551234567, +15557654321"></textarea>
+      <small class="muted">Comma or newline separated, international format.</small>
+    </label>
+    {% endif %}
+  </fieldset>
+
+  <fieldset>
+    <legend>Pacing &amp; safety</legend>
+    <div class="grid-2">
+      <label>Send rate (SMS / minute)
+        <input type="number" name="send_rate_per_minute" min="1" max="600"
+               value="{{ c.get('send_rate_per_minute') or d.get('send_rate_per_minute') or s.get('send_rate_per_minute') or 30 }}">
+        <small class="muted">Clamped to the {{ plan.label }} plan ceiling of {{ plan.limits.send_rate_per_minute }}/min.</small>
+      </label>
+      <label>Batch size
+        <input type="number" name="batch_size" min="1" max="5000"
+               value="{{ c.get('batch_size') or d.get('batch_size') or 500 }}">
+        <small class="muted">Recipients claimed per send cycle.</small>
+      </label>
+      <label>Stagger jitter (seconds)
+        <input type="number" name="stagger_seconds" min="0" max="86400"
+               value="{{ c.get('stagger_seconds') if c.get('stagger_seconds') is not none else (d.get('stagger_seconds') or 0) }}">
+        <small class="muted">Random delay between messages, on top of the rate.</small>
+      </label>
+      <label>Delivery window timezone
+        <input type="text" name="window_timezone" maxlength="64"
+               value="{{ c.get('window_timezone') or d.get('window_timezone') or 'UTC' }}">
+      </label>
+      <label>Window opens
+        <input type="time" name="window_start"
+               value="{{ c.get('window_start')[:5] if c.get('window_start') else (d.get('window_start')[:5] if d.get('window_start') else '') }}">
+      </label>
+      <label>Window closes
+        <input type="time" name="window_end"
+               value="{{ c.get('window_end')[:5] if c.get('window_end') else (d.get('window_end')[:5] if d.get('window_end') else '') }}">
+      </label>
+      <label>Soft-bounce policy
+        {% set policy = c.get('soft_bounce_policy') or 'suppress' %}
+        <select name="soft_bounce_policy">
+          <option value="suppress" {% if policy == 'suppress' %}selected{% endif %}>Suppress immediately</option>
+          <option value="threshold" {% if policy == 'threshold' %}selected{% endif %}>Suppress after N soft bounces</option>
+          <option value="never" {% if policy == 'never' %}selected{% endif %}>Never auto-suppress</option>
+        </select>
+      </label>
+      <label>Soft-bounce threshold
+        <input type="number" name="soft_bounce_threshold" min="1" max="10"
+               value="{{ c.get('soft_bounce_threshold') or 2 }}">
+      </label>
+    </div>
+    <p class="muted small">{{ plan.note }}</p>
+  </fieldset>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">{{ 'Save changes' if campaign else 'Create campaign' }}</button>
+    {% if not campaign %}
+    <button type="submit" class="btn" id="sms-save-start-btn" data-start-after-save="1">Create &amp; start</button>
+    {% endif %}
+    <a class="btn" href="{{ url_for('web.sms_campaign_detail', campaign_id=campaign.id) if campaign else url_for('web.sms_index') }}">Cancel</a>
+    <span id="sms-campaign-status" class="muted"></span>
+  </div>
+</form>
+{% endblock %}

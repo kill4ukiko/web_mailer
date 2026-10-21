@@ -1,0 +1,19 @@
+﻿{% extends "bird/base.html" %}
+{% block title %}Report &middot; {{ campaign.name }}{% endblock %}
+{% block content %}
+<div class="section-head">
+  <div><h1>{{ campaign.name }}</h1><p class="muted">Delivery report</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('web.bird_sms_campaign_detail', campaign_id=campaign.id) }}">Back to campaign</a><a class="btn" href="{{ url_for('bird_sms_campaigns.campaign_report', campaign_id=campaign.id, category=category, format='csv') }}">Download CSV</a></div>
+</div>
+<div class="filter-row">
+  {% for cat in categories %}
+  <a class="pill{{ ' pill-active' if category == cat else '' }}" href="{{ url_for('web.bird_sms_campaign_report', campaign_id=campaign.id, category=cat) }}">{{ cat }} ({{ counts.get(cat, 0) }})</a>
+  {% endfor %}
+</div>
+{% if rows %}
+<table class="table">
+  <thead><tr>{% for col in ['phone','first_name','last_name','contact_status','recipient_status','sent_at','delivered_at','segments','cost','message_id','last_error','error_code','error_description'] %}<th>{{ col | replace('_', ' ') }}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in rows %}<tr>{% for col in ['phone','first_name','last_name','contact_status','recipient_status','sent_at','delivered_at','segments','cost','message_id','last_error','error_code','error_description'] %}<td>{{ r.get(col) if r.get(col) is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+</table>
+{% else %}<p class="muted">No recipients in this category.</p>{% endif %}
+{% endblock %}

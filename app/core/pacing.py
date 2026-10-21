@@ -20,6 +20,7 @@ import logging
 import random
 import threading
 import time
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -188,3 +189,100 @@ class PacingGate:
             except Exception:  # noqa: BLE001
                 pass
         _LocalPacer.reset(self.campaign_id)
+
+
+# --------------------------------------------------------------------------- #
+# Adaptive cycle planner
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class CyclePlan:
+    """How much to send in one cycle and how long to wait before the next.
+
+    ``chunk`` is the number of recipients to claim/send. ``in_batch_jitter`` is
+    the random 0..N second delay to apply *between* those sends. ``next_wait``
+    is the delay before the next cycle and always carries the per-email jitter,
+    so a large jitter never has to be slept inside a single blocking task.
+    ``defer`` means "claim nothing this cycle" (caller should wait/retry).
+    """
+
+    chunk: int = 0
+    in_batch_jitter: float = 0.0
+    next_wait: float = 1.0
+    defer: bool = False
+
+
+def plan_cycle(
+    *,
+    rate: int,
+    jitter: float,
+    allowance: int,
+    batch_size: int,
+    max_sends_per_tick: int,
+    cycle_budget: float = 45.0,
+    window_remaining: float | None = None,
+    stale_limit: float = 900.0,
+    rng: random.Random | None = None,
+) -> CyclePlan:
+    """Plan one adaptive send cycle that honours the jitter exactly.
+
+    Sizing is based on the *worst-case* time for each email (``gate + jitter``)
+    so a cycle can never overrun the cycle budget, the stale-claim limit or the
+    remaining delivery window. When a single email does not fit (because the
+    jitter is large), the jitter is fully deferred to ``next_wait`` instead of
+    being reduced or slept — the email is sent now, the next one later, and
+    nothing is skipped.
+    """
+    rng = rng or random
+    gate = 60.0 / max(1, int(rate))
+    jitter = max(0.0, float(jitter or 0))
+
+    if allowance <= 0:
+        return CyclePlan(defer=True)
+
+    # Honour the full jitter: if it cannot fit before the window closes, wait
+    # for the next window instead of silently shrinking it.
+    if window_remaining is not None and window_remaining <= gate + jitter:
+        return CyclePlan(defer=True)
+
+    next_wait = gate + rng.uniform(0.0, jitter)
+
+    # A jitter longer than the stale-claim window must never hold a claim.
+    if jitter >= stale_limit:
+        return CyclePlan(chunk=1, in_batch_jitter=0.0, next_wait=next_wait)
+
+    hard = float(cycle_budget)
+    hard = min(hard, float(stale_limit))
+    if window_remaining is not None:
+        hard = min(hard, float(window_remaining))
+    if hard <= 0:
+        return CyclePlan(defer=True)
+
+    chunk = int(hard // (gate + jitter))
+    if chunk <= 0:
+        # The single send fits (checked above); only its jitter cannot fit in
+        # this cycle, so defer that jitter to the next cycle.
+        return CyclePlan(chunk=1, in_batch_jitter=0.0, next_wait=next_wait)
+
+    chunk = max(1, min(chunk, int(allowance), int(batch_size), int(max_sends_per_tick)))
+    in_batch = jitter if chunk > 1 else 0.0
+    return CyclePlan(chunk=chunk, in_batch_jitter=in_batch, next_wait=next_wait)
+
+
+def throughput_per_hour(rate: int, jitter: float, hourly_cap: int | None = None) -> float:
+    """Estimated sends/hour for a rate + average jitter (0 means unlimited cap)."""
+    gate = 60.0 / max(1, int(rate))
+    jitter = max(0.0, float(jitter or 0))
+    estimate = 3600.0 / (gate + jitter / 2.0)
+    if hourly_cap:
+        estimate = min(estimate, float(hourly_cap))
+    return round(estimate, 1)
+
+
+def estimated_campaign_hours(
+    recipients: int, rate: int, jitter: float, hourly_cap: int | None = None
+) -> float:
+    """Rough wall-clock hours to send ``recipients`` at the given pacing."""
+    per_hour = throughput_per_hour(rate, jitter, hourly_cap)
+    if per_hour <= 0:
+        return 0.0
+    return round(max(0, int(recipients or 0)) / per_hour, 2)

@@ -124,7 +124,7 @@ class BrevoClient:
         results: list[SendResult] = []
         local_gate = None if gate is not None else RateGate(send_rate_per_minute, global_rate_per_minute)
 
-        for recipient in recipients:
+        for index, recipient in enumerate(recipients):
             if cancel_check is not None and cancel_check():
                 break
 
@@ -165,8 +165,12 @@ class BrevoClient:
                     on_error(exc)
             results.append(res)
 
-            if jitter_ms[1] > 0:
+            # Jitter only *between* sends; the gap after the last email is
+            # carried by the caller's next-cycle countdown.
+            if jitter_ms[1] > 0 and index < len(recipients) - 1:
                 time.sleep(random.uniform(*jitter_ms) / 1000.0)
+                if cancel_check is not None and cancel_check():
+                    break
 
         return results
 

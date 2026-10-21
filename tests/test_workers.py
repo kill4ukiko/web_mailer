@@ -414,3 +414,191 @@ def test_resume_held_completes_when_queue_drained(supabase, monkeypatch):
     result = resume_held_campaigns.run()
     assert campaign["id"] in result["completed"]
     assert supabase.get_campaign(campaign["id"])["status"] == "completed"
+
+
+def test_resume_sending_skips_paced_campaign(supabase, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.workers.tasks_campaign import resume_sending
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=1)
+    campaign["next_send_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=40)
+    ).isoformat()
+
+    dispatched: list = []
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.send_campaign.apply_async",
+        lambda *a, **k: dispatched.append(k),
+    )
+
+    result = resume_sending.run()
+    assert campaign["id"] not in result["resumed"]
+    assert dispatched == []
+
+
+def test_send_campaign_defers_while_next_send_at_in_future(supabase, monkeypatch):
+    """A campaign paced by a previous cycle must not send before its slot."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.workers.tasks_campaign import _send_once
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=2)
+    campaign["next_send_at"] = (
+        datetime.now(timezone.utc) + timedelta(seconds=40)
+    ).isoformat()
+
+    sent: list = []
+    monkeypatch.setattr(
+        "app.core.brevo.BrevoClient.send_batch",
+        lambda self, recipients, **k: sent.append(recipients) or [],
+    )
+
+    result = _send_once(campaign["id"])
+    assert result["status"] == "deferred"
+    assert 1 <= result["requeue_in"] <= 40
+    assert sent == []
+
+
+def test_send_campaign_schedules_next_send_after_jittered_send(supabase, monkeypatch):
+    """A 50s per-email jitter sends one email, then defers the wait itself."""
+    from app.workers.tasks_campaign import _send_once
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=5)
+    campaign["stagger_seconds"] = 50  # jitter exceeds the per-cycle budget
+
+    captured = {}
+
+    def fake_send_batch(self, recipients, **kwargs):
+        captured["jitter_ms"] = kwargs.get("jitter_ms")
+        return [
+            SendResult(recipient_id=r["recipient_id"], email=r["email"], ok=True, message_id="m")
+            for r in recipients
+        ]
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_batch", fake_send_batch)
+
+    result = _send_once(campaign["id"])
+
+    assert captured["jitter_ms"] == (0, 0)  # never slept inside the cycle
+    assert result["requeue_in"] >= 1
+    stored = supabase.get_campaign(campaign["id"])
+    assert stored["status"] == "sending"
+    assert stored["next_send_at"]
+    queued = [
+        r for r in supabase.recipients
+        if r["campaign_id"] == campaign["id"] and r["status"] == "queued"
+    ]
+    assert len(queued) == 4  # nothing skipped
+
+
+def test_send_campaign_passes_in_batch_jitter(supabase, monkeypatch):
+    from app.workers.tasks_campaign import _send_once
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=10)
+    campaign["stagger_seconds"] = 5
+
+    captured = {}
+
+    def fake_send_batch(self, recipients, **kwargs):
+        captured["jitter_ms"] = kwargs.get("jitter_ms")
+        captured["count"] = len(recipients)
+        return [
+            SendResult(recipient_id=r["recipient_id"], email=r["email"], ok=True, message_id="m")
+            for r in recipients
+        ]
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_batch", fake_send_batch)
+
+    _send_once(campaign["id"])
+
+    assert captured["jitter_ms"] == (0, 5000)
+    assert captured["count"] == 6  # 45s budget / (2s gate + 5s jitter)
+
+
+def test_paid_plan_pacing_flows_through_worker(supabase, monkeypatch):
+    """A non-free plan is handled by the same generic pacing path."""
+    from app.workers.tasks_campaign import _send_once
+
+    supabase.settings_row = {
+        "brevo_plan": "business",
+        "send_rate_per_minute": 120,
+        "max_recipients_per_hour": 2000,
+        "max_recipients_per_day": 15000,
+        "default_stagger_seconds": 5,
+    }
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=10)
+    campaign["send_rate_per_minute"] = None  # use the plan-clamped global rate
+    campaign["stagger_seconds"] = None
+
+    captured = {}
+
+    def fake_send_batch(self, recipients, **kwargs):
+        captured["count"] = len(recipients)
+        captured["jitter_ms"] = kwargs.get("jitter_ms")
+        return [
+            SendResult(recipient_id=r["recipient_id"], email=r["email"], ok=True, message_id="m")
+            for r in recipients
+        ]
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_batch", fake_send_batch)
+
+    result = _send_once(campaign["id"])
+
+    # 45s budget / (0.5s gate + 5s jitter) = 8 per cycle; the paid hourly cap
+    # (2000) never truncates it, so the cycle is sized by the pacer alone.
+    assert captured["count"] == 8
+    assert captured["jitter_ms"] == (0, 5000)
+    assert result["status"] == "sending"
+    assert supabase.get_campaign(campaign["id"])["next_send_at"]
+
+
+def test_global_stagger_applies_when_campaign_unset(supabase, monkeypatch):
+    from app.workers.tasks_campaign import _send_once
+
+    supabase.settings_row = {"default_stagger_seconds": 50}
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=3)
+    campaign["stagger_seconds"] = None
+
+    captured = {}
+    monkeypatch.setattr(
+        "app.core.brevo.BrevoClient.send_batch",
+        lambda self, recipients, **k: captured.update(k)
+        or [SendResult(recipient_id=r["recipient_id"], email=r["email"], ok=True, message_id="m")
+            for r in recipients],
+    )
+
+    result = _send_once(campaign["id"])
+    assert captured["jitter_ms"] == (0, 0)
+    assert result["requeue_in"] >= 1
+
+
+def test_send_campaign_defers_when_window_cannot_fit_jitter(supabase, monkeypatch):
+    """If even one jittered email can't fit before the window closes, defer."""
+    from app.workers.tasks_campaign import _send_once
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=2)
+    campaign["stagger_seconds"] = 50
+
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.seconds_until_window_open", lambda *a, **k: 0
+    )
+    monkeypatch.setattr(
+        "app.workers.tasks_campaign.seconds_until_window_close", lambda *a, **k: 10
+    )
+
+    sent: list = []
+    monkeypatch.setattr(
+        "app.core.brevo.BrevoClient.send_batch",
+        lambda self, recipients, **k: sent.append(recipients) or [],
+    )
+
+    result = _send_once(campaign["id"])
+    assert result["status"] == "deferred"
+    assert sent == []
+    assert all(
+        r["status"] == "queued"
+        for r in supabase.recipients
+        if r["campaign_id"] == campaign["id"]
+    )
+    assert supabase.get_campaign(campaign["id"])["status"] == "sending"

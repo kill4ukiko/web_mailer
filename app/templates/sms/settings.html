@@ -1,0 +1,243 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}B SMS settings &middot; webmailer{% endblock %}
+{% block content %}
+{% set s = settings or {} %}
+<h1>B SMS settings</h1>
+<p class="muted">
+  Defaults for every B SMS campaign. Per-campaign values override these. The
+  active plan sets recommended values and hard ceilings enforced by the guard.
+</p>
+
+<section class="panel sms-credit-panel" id="sms-settings-credit-panel">
+  <div class="panel-head">
+    <h2>Brevo SMS balance</h2>
+    <div class="actions">
+      <span class="badge badge-priority">{{ plan.label }}</span>
+      <button type="button" class="btn btn-sm" id="sms-credits-refresh">Refresh</button>
+    </div>
+  </div>
+  <p>
+    <span class="card-value" id="sms-credit-value">
+      {% if credits.get('credits') is not none %}{{ credits.get('credits') }}{% else %}&mdash;{% endif %}
+    </span>
+    <span class="card-label">credits remaining</span>
+  </p>
+  <p class="muted small" id="sms-credit-note">
+    {% if credits.get('available') %}Fetched from Brevo and cached for a few minutes.
+    {% else %}Balance unavailable. Check the Brevo API key, then refresh.{% endif %}
+  </p>
+  <p class="notice small" id="sms-credit-low" {% if not credits.get('low') %}hidden{% endif %}>
+    Low balance: below {{ credits.get('threshold') or s.get('low_credit_threshold') }} credits.
+  </p>
+  <p class="muted small">
+    SMS webhook URL:
+    <code class="code-block" style="display:inline-block;padding:4px 8px">
+      {{ (s.get('public_base_url') or 'https://your-domain') }}/api/webhooks/sms?token=YOUR_WEBHOOK_TOKEN
+    </code>
+  </p>
+</section>
+
+<form id="sms-settings-form" class="form">
+  <fieldset>
+    <legend>Plan</legend>
+    <div class="grid-2">
+      <label>Brevo Brevo SMS plan
+        <select name="sms_plan" id="sms-plan-select">
+          {% for key, spec in plans.items() %}
+          <option value="{{ key }}" {% if (s.get('sms_plan') or 'trial') == key %}selected{% endif %}>{{ spec.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="muted small" id="sms-plan-hint"></div>
+    </div>
+    <script type="application/json" id="sms-plans-data">{{ plans | tojson }}</script>
+  </fieldset>
+
+  <fieldset>
+    <legend>Sender identity</legend>
+    <div class="grid-2">
+      <label>Sender ID <button type="button" class="info-icon" data-info="sms_sender">i</button>
+        <input type="text" name="sms_sender" maxlength="15"
+               value="{{ s.get('sms_sender') or '' }}" placeholder="Acme">
+        <small class="muted">11 alphanumeric characters or 15 digits.</small>
+      </label>
+      <label>Sender type <button type="button" class="info-icon" data-info="bird_sender">i</button>
+        {% set stype = s.get('sms_sender_type') or 'alphanumeric' %}
+        <select name="sms_sender_type">
+          <option value="alphanumeric" {% if stype == 'alphanumeric' %}selected{% endif %}>Alphanumeric</option>
+          <option value="numeric" {% if stype == 'numeric' %}selected{% endif %}>Numeric</option>
+        </select>
+      </label>
+      <label>Default message type
+        {% set dtype = s.get('default_sms_type') or 'transactional' %}
+        <select name="default_sms_type">
+          <option value="transactional" {% if dtype == 'transactional' %}selected{% endif %}>Transactional</option>
+          <option value="marketing" {% if dtype == 'marketing' %}selected{% endif %}>Marketing</option>
+        </select>
+      </label>
+      <label>Default country code
+        <input type="text" name="default_country_code" maxlength="8"
+               value="{{ s.get('default_country_code') or '' }}" placeholder="+1">
+        <small class="muted">Used for national-format imports. Leave blank to require E.164.</small>
+      </label>
+      <label>Organisation prefix <span class="muted">(optional)</span>
+        <input type="text" name="organisation_prefix" maxlength="64"
+               value="{{ s.get('organisation_prefix') or '' }}" placeholder="Acme">
+      </label>
+      <label class="checkbox-label">
+        <span class="checkbox-row">
+          <input type="checkbox" name="unicode_enabled" {% if s.get('unicode_enabled') %}checked{% endif %}>
+          Allow Unicode by default (emoji / non-Latin)
+        </span>
+      </label>
+      <label class="checkbox-label">
+        <span class="checkbox-row">
+          <input type="checkbox" name="include_stop_code" {% if s.get('include_stop_code') %}checked{% endif %}>
+          Append a STOP line by default
+        </span>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Public URL &amp; safety</legend>
+    <div class="grid-2">
+      <label>Public base URL
+        <input type="url" name="public_base_url" maxlength="512"
+               value="{{ s.get('public_base_url') or '' }}" placeholder="https://mail.yourdomain.com">
+        <small class="muted">Used in SMS delivery webhooks; must be reachable from the internet.</small>
+      </label>
+      <label class="checkbox-label">
+        Pause all SMS sending
+        <span class="checkbox-row">
+          <input type="checkbox" name="sending_paused" {% if s.get('sending_paused') %}checked{% endif %}>
+          Separate kill switch (email is unaffected)
+        </span>
+      </label>
+      <label>Low-credit warning threshold
+        <input type="number" name="low_credit_threshold" min="0" max="10000000"
+               value="{{ s.get('low_credit_threshold') if s.get('low_credit_threshold') is not none else 50 }}">
+      </label>
+      <label>Credit cost per segment
+        <input type="number" name="credit_cost_per_segment" min="0" max="1000" step="0.01"
+               value="{{ s.get('credit_cost_per_segment') if s.get('credit_cost_per_segment') is not none else 1 }}">
+      </label>
+      <label>Max hard-bounce rate
+        <input type="number" name="max_hard_bounce_rate" min="0" max="1" step="0.001"
+               value="{{ s.get('max_hard_bounce_rate') if s.get('max_hard_bounce_rate') is not none else 0.03 }}">
+        <small class="muted">Fraction, e.g. 0.03 = 3%.</small>
+      </label>
+      <label>Max complaint rate
+        <input type="number" name="max_complaint_rate" min="0" max="1" step="0.0001"
+               value="{{ s.get('max_complaint_rate') if s.get('max_complaint_rate') is not none else 0.001 }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Pacing &amp; caps</legend>
+    <div class="grid-2">
+      <label>Send rate (SMS / minute)
+        <input type="number" name="send_rate_per_minute" min="1" max="600"
+               value="{{ s.get('send_rate_per_minute') or plan.recommended.send_rate_per_minute }}">
+        <small class="muted">Plan ceiling: {{ plan.limits.send_rate_per_minute }}/min.</small>
+      </label>
+      <label>Batch size
+        <input type="number" name="default_batch_size" min="1" max="5000"
+               value="{{ s.get('default_batch_size') or 500 }}">
+      </label>
+      <label>Max recipients / hour
+        <input type="number" name="max_recipients_per_hour" min="1" max="20000"
+               value="{{ s.get('max_recipients_per_hour') or plan.recommended.max_recipients_per_hour }}">
+      </label>
+      <label>Max recipients / day
+        <input type="number" name="max_recipients_per_day" min="1" max="100000"
+               value="{{ s.get('max_recipients_per_day') or plan.recommended.max_recipients_per_day }}">
+      </label>
+      <label>Max credits / day
+        <input type="number" name="max_credits_per_day" min="1" max="1000000"
+               value="{{ s.get('max_credits_per_day') or plan.recommended.max_credits_per_day }}">
+        <small class="muted">A recipient may consume several segments.</small>
+      </label>
+      <label>Stagger jitter (seconds)
+        <input type="number" name="default_stagger_seconds" min="0" max="86400"
+               value="{{ s.get('default_stagger_seconds') if s.get('default_stagger_seconds') is not none else 0 }}">
+      </label>
+      <label>Collision window (seconds)
+        <input type="number" name="collision_window_seconds" min="0" max="3600"
+               value="{{ s.get('collision_window_seconds') if s.get('collision_window_seconds') is not none else 5 }}">
+      </label>
+      <label>Cross-campaign gap min (seconds)
+        <input type="number" name="cross_gap_min_seconds" min="0" max="3600"
+               value="{{ s.get('cross_gap_min_seconds') if s.get('cross_gap_min_seconds') is not none else 5 }}">
+      </label>
+      <label>Cross-campaign gap max (seconds)
+        <input type="number" name="cross_gap_max_seconds" min="0" max="3600"
+               value="{{ s.get('cross_gap_max_seconds') if s.get('cross_gap_max_seconds') is not none else 20 }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Default delivery window</legend>
+    <div class="grid-2">
+      <label>Window timezone
+        <input type="text" name="default_window_timezone" maxlength="64"
+               value="{{ s.get('default_window_timezone') or 'UTC' }}">
+      </label>
+      <span></span>
+      <label>Window opens
+        <input type="time" name="default_window_start"
+               value="{{ s.get('default_window_start')[:5] if s.get('default_window_start') else '' }}">
+      </label>
+      <label>Window closes
+        <input type="time" name="default_window_end"
+               value="{{ s.get('default_window_end')[:5] if s.get('default_window_end') else '' }}">
+      </label>
+    </div>
+    <small class="muted">Leave blank for 24/7. Marketing SMS is still delayed by Brevo between 10pm and 8am.</small>
+  </fieldset>
+
+  <fieldset>
+    <legend>Warm-up</legend>
+    <div class="grid-2">
+      <label class="checkbox-label">
+        <span class="checkbox-row">
+          <input type="checkbox" name="warmup_enabled" {% if s.get('warmup_enabled') %}checked{% endif %}>
+          Enable SMS warm-up mode
+        </span>
+      </label>
+      <label>Warm-up start date
+        <input type="date" name="warmup_start_date" value="{{ s.get('warmup_start_date') or '' }}">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Telegram alerts</legend>
+    <div class="grid-2">
+      <label>Bot token override
+        <input type="password" name="telegram_bot_token" autocomplete="off"
+               placeholder="{{ s.get('telegram_token_hint') or 'Uses TELEGRAM_BOT_TOKEN when blank' }}">
+        <small class="muted">{% if s.get('telegram_token_set') %}Override set ({{ s.get('telegram_token_source') }}). Leave blank to keep it.{% endif %}</small>
+      </label>
+      <label>Chat ID override
+        <input type="text" name="telegram_chat_id" maxlength="128"
+               value="{{ s.get('telegram_chat_id') or '' }}" placeholder="Uses TELEGRAM_CHAT_ID when blank">
+        <small class="muted">Source: {{ {'db': 'database', 'env': 'environment', 'none': 'not configured'}.get(s.get('telegram_chat_source'), 'not configured') }}</small>
+      </label>
+    </div>
+    <div class="inline-row">
+      <button type="button" id="test-sms-telegram-btn" class="btn">Send test alert</button>
+      <button type="button" id="clear-sms-telegram-btn" class="btn">Clear overrides</button>
+    </div>
+    <small class="muted">B SMS alerts use this section's override, falling back to the global Telegram bot token and chat ID.</small>
+  </fieldset>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save B SMS settings</button>
+    <a class="btn" href="{{ url_for('web.sms_index') }}">Back to B SMS home</a>
+    <span id="sms-settings-status" class="muted"></span>
+  </div>
+</form>
+{% endblock %}

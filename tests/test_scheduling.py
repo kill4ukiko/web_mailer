@@ -8,6 +8,7 @@ from app.core.scheduling import (
     batch_countdown_seconds,
     is_due,
     is_within_window,
+    seconds_until_window_close,
     seconds_until_window_open,
 )
 
@@ -57,3 +58,28 @@ def test_is_due():
     assert is_due(None) is True
     assert is_due("2020-01-01T00:00:00+00:00") is True
     assert is_due("2999-01-01T00:00:00+00:00") is False
+
+
+def test_window_close_without_window_is_none():
+    assert seconds_until_window_close(None, None, "UTC", NOON) is None
+
+
+def test_window_close_returns_zero_when_closed():
+    assert seconds_until_window_close("09:00", "17:00", "UTC", EIGHT_AM) == 0
+    assert seconds_until_window_close("22:00", "06:00", "UTC", NOON) == 0
+
+
+def test_window_close_simple_window():
+    # Noon -> 17:00 = 5 hours.
+    assert seconds_until_window_close("09:00", "17:00", "UTC", NOON) == 18000
+
+
+def test_window_close_spanning_midnight():
+    # 23:00 -> window closes at 06:00 tomorrow = 7 hours.
+    assert seconds_until_window_close("22:00", "06:00", "UTC", ELEVEN_PM) == 25200
+
+
+def test_window_close_respects_timezone():
+    # 15:00 UTC == 10:00 New York; the 09:00-17:00 window closes in 7 hours.
+    now = datetime(2026, 1, 1, 15, 0, tzinfo=timezone.utc)
+    assert seconds_until_window_close("09:00", "17:00", "America/New_York", now) == 25200

@@ -12,9 +12,16 @@ def _seed(supabase):
     return campaign
 
 
+def test_channel_chooser_renders(client, supabase):
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"Emailer" in resp.data
+    assert b"SMS" in resp.data
+
+
 def test_dashboard_renders(client, supabase):
     _seed(supabase)
-    resp = client.get("/")
+    resp = client.get("/email")
     assert resp.status_code == 200
     assert b"Launch" in resp.data
 

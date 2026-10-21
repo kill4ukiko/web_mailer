@@ -79,6 +79,79 @@ const INFO = {
     body: "<p>Where test emails and operational notices are sent. If blank, the sender " +
       "address is used.</p>",
   },
+  sms_sender: {
+    title: "B SMS sender ID",
+    body: "<p>Brevo accepts up to 11 alphanumeric characters or 15 digits. " +
+      "Recipients see this instead of a phone number; in some countries it must be pre-registered.</p>" +
+      "<p><em>Example:</em> <code>Acme</code></p>",
+  },
+  sms_plan: {
+    title: "Brevo SMS plan",
+    body: "<p>Your Brevo subscription tier. It sets recommended pacing, hourly/daily recipient caps " +
+      "and credit ceilings enforced before every send.</p>",
+  },
+  sms_unicode: {
+    title: "Unicode SMS",
+    body: "<p>GSM-7 fits 160 characters per segment; Unicode/UCS-2 fits only 70. " +
+      "Enable Unicode only for emoji or non-Latin scripts because it can triple the credit cost.</p>",
+  },
+  sms_stop: {
+    title: "STOP line",
+    body: "<p>Appends opt-out instructions to marketing SMS. Transactional messages normally omit it. " +
+      "The line itself consumes characters and can add a segment.</p>",
+  },
+  sms_schedule: {
+    title: "SMS scheduling",
+    body: "<p>Drafts send immediately when started. Set a schedule to hold delivery until a specific time. " +
+      "Quiet windows and timezone checks are applied at send time.</p>",
+  },
+  bird_sender: {
+    title: "Bird sender",
+    body: "<p>Use an E.164 phone number or an alphanumeric sender ID enabled in Bird. " +
+      "The sender must be provisioned for the destination country or Bird rejects the request.</p>" +
+      "<p><em>Example:</em> <code>+15551234567</code></p>",
+  },
+  bird_category: {
+    title: "Bird message category",
+    body: "<p>Bird routes by category: transactional, marketing, authentication or service. " +
+      "The category affects consent rules, STOP handling and routing. Match it to the message purpose.</p>",
+  },
+  bird_smart_encoding: {
+    title: "Smart encoding",
+    body: "<p>Lets Bird choose GSM-7 when the text allows it, falling back to UCS-2 for emoji or " +
+      "non-Latin characters. Disabling it forces the wider encoding and raises segment cost.</p>",
+  },
+  bird_budget: {
+    title: "Bird daily budget",
+    body: "<p>The worker stops starting new sends once estimated webhook cost reaches this amount. " +
+      "Bird does not expose wallet balance to SMS workspace keys, so this is a local guardrail.</p>",
+  },
+  bird_key: {
+    title: "Bird API key",
+    body: "<p>A workspace key beginning with <code>bk_</code>. It needs SMS send permission. " +
+      "The key is stored server-side and never returned in full by the API.</p>",
+  },
+  bird_webhook_secret: {
+    title: "Bird webhook signing secret",
+    body: "<p>Starts with <code>whsec_</code>. Bird signs every webhook with Standard Webhooks " +
+      "HMAC-SHA256. Without this secret delivery updates are rejected.</p>",
+  },
+  bird_region: {
+    title: "Bird region",
+    body: "<p>Select the region shown in your Bird workspace. Requests go to " +
+      "<code>us1.platform.bird.com</code> or <code>eu1.platform.bird.com</code>; the wrong region fails authentication.</p>",
+  },
+  bird_template: {
+    title: "Bird templates",
+    body: "<p>Template sends use a slug, language and JSON parameters instead of free text. " +
+      "System templates reject a sender; workspace templates require an approved sender. " +
+      "The catalogue needs the <code>sms_management</code> scope, but you can always type a slug.</p>",
+  },
+  bird_quiet_window: {
+    title: "Bird quiet window",
+    body: "<p>Sends are held outside this local-time window. Use an IANA timezone such as " +
+      "<code>Europe/London</code>; the window is evaluated per recipient at dispatch time.</p>",
+  },
   public_base_url: {
     title: "Public base URL",
     body: "<p>The public https address used for the open-tracking pixel and the unsubscribe link.</p>" +
@@ -128,8 +201,12 @@ const INFO = {
   },
   stagger_seconds: {
     title: "Stagger jitter (seconds)",
-    body: "<p>Adds a random delay (0–N seconds) between batches so traffic doesn't look like " +
-      "an automated burst. <em>Example:</em> <code>20</code> adds 0–20s of randomness.</p>",
+    body: "<p>Adds a random 0–N second delay <strong>between every email</strong>, not just " +
+      "between batches, so traffic doesn't look like an automated burst.</p>" +
+      "<p>The delay is honoured exactly: if it is longer than a single work cycle the next " +
+      "email is simply scheduled later — pacing never blocks the sender and never skips a " +
+      "recipient.</p>" +
+      "<p><em>Example:</em> <code>50</code> waits a random 0–50s before each email.</p>",
   },
   window: {
     title: "Delivery window",
@@ -1051,6 +1128,11 @@ function initGlobalSettingsForm() {
     if (pauseToggle) payload.sending_paused = pauseToggle.checked;
     if (planSelect) payload.brevo_plan = planSelect.value;
 
+    ["telegram_bot_token", "telegram_chat_id"].forEach((k) => {
+      const v = (fd.get(k) || "").trim();
+      if (v) payload[k] = v;
+    });
+
     const button = form.querySelector("button[type=submit]");
     button.disabled = true;
     setStatus("form-status", "Saving...", false);
@@ -1091,12 +1173,30 @@ function initGlobalSettingsForm() {
       testTgBtn.disabled = true;
       setStatus("form-status", "Sending Telegram test...", false);
       try {
-        await postJSON("/api/settings/test-telegram", {});
+        await postJSON("/api/settings/test-telegram", { section: "email" });
         setStatus("form-status", "Telegram test sent — check your chat.", false);
       } catch (err) {
         setStatus("form-status", "Telegram test failed: " + err.message, true);
       } finally {
         testTgBtn.disabled = false;
+      }
+    });
+  }
+
+  const clearTgBtn = document.getElementById("clear-telegram-btn");
+  if (clearTgBtn) {
+    clearTgBtn.addEventListener("click", async () => {
+      clearTgBtn.disabled = true;
+      setStatus("form-status", "Clearing Telegram overrides...", false);
+      try {
+        await postJSON("/api/settings", { telegram_bot_token: "", telegram_chat_id: "" }, "PATCH");
+        form.querySelector("[name=telegram_bot_token]").value = "";
+        form.querySelector("[name=telegram_chat_id]").value = "";
+        setStatus("form-status", "Telegram overrides cleared; using global fallback.", false);
+      } catch (err) {
+        setStatus("form-status", "Clear failed: " + err.message, true);
+      } finally {
+        clearTgBtn.disabled = false;
       }
     });
   }

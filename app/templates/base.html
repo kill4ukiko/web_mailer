@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -12,8 +12,9 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">webmailer</div>
+    <a class="brand" href="{{ url_for('web.home') }}">webmailer</a>
     <nav>
+      {% block nav %}
       <a href="{{ url_for('web.index') }}">Dashboard</a>
       <a href="{{ url_for('web.contacts_list') }}">Contacts</a>
       <a href="{{ url_for('web.campaign_new') }}">New campaign</a>
@@ -21,7 +22,9 @@
       <a href="{{ url_for('web.deliverability_page') }}">Deliverability</a>
       <a href="{{ url_for('web.settings_page') }}">Settings</a>
       <a href="{{ url_for('web.about_page') }}">About</a>
-      <a href="/api/health" target="_blank" rel="noopener">API health</a>
+      <a href="{{ url_for('web.sms_index') }}">B SMS</a>
+      <a href="{{ url_for('web.bird_sms_index') }}">Bird SMS</a>
+      {% endblock %}
     </nav>
     <div class="topbar-user">
       {% if auth_user %}

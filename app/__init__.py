@@ -1,4 +1,4 @@
-"""Flask application factory for the web_mailer platform."""
+﻿"""Flask application factory for the web_mailer platform."""
 from __future__ import annotations
 
 import time
@@ -71,6 +71,12 @@ def register_extensions(app: Flask) -> None:
 
 def register_blueprints(app: Flask) -> None:
     from app.api.auth import bp as auth_bp
+    from app.api.bird_sms_campaigns import bp as bird_sms_campaigns_bp
+    from app.api.bird_sms_contacts import bp as bird_sms_contacts_bp
+    from app.api.bird_sms_lists import bp as bird_sms_lists_bp
+    from app.api.bird_sms_settings import bp as bird_sms_settings_bp
+    from app.api.bird_sms_templates import bp as bird_sms_templates_bp
+    from app.api.bird_sms_webhooks import bp as bird_sms_webhooks_bp
     from app.api.campaigns import bp as campaigns_bp
     from app.api.contacts import bp as contacts_bp
     from app.api.deliverability import bp as deliverability_bp
@@ -78,6 +84,12 @@ def register_blueprints(app: Flask) -> None:
     from app.api.lists import bp as lists_bp
     from app.api.preflight import bp as preflight_bp
     from app.api.settings import bp as settings_bp
+    from app.api.sms_campaigns import bp as sms_campaigns_bp
+    from app.api.sms_contacts import bp as sms_contacts_bp
+    from app.api.sms_lists import bp as sms_lists_bp
+    from app.api.sms_settings import bp as sms_settings_bp
+    from app.api.sms_templates import bp as sms_templates_bp
+    from app.api.sms_webhooks import bp as sms_webhooks_bp
     from app.api.templates import bp as templates_bp
     from app.api.tracking import bp as tracking_bp
     from app.api.webhooks import bp as webhooks_bp
@@ -89,11 +101,23 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(contacts_bp)
     app.register_blueprint(campaigns_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(sms_settings_bp)
+    app.register_blueprint(bird_sms_settings_bp)
+    app.register_blueprint(bird_sms_contacts_bp)
+    app.register_blueprint(bird_sms_lists_bp)
+    app.register_blueprint(bird_sms_templates_bp)
+    app.register_blueprint(bird_sms_campaigns_bp)
+    app.register_blueprint(sms_contacts_bp)
+    app.register_blueprint(sms_lists_bp)
+    app.register_blueprint(sms_templates_bp)
+    app.register_blueprint(sms_campaigns_bp)
     app.register_blueprint(deliverability_bp)
     app.register_blueprint(lists_bp)
     app.register_blueprint(templates_bp)
     app.register_blueprint(preflight_bp)
     app.register_blueprint(webhooks_bp)
+    app.register_blueprint(sms_webhooks_bp)
+    app.register_blueprint(bird_sms_webhooks_bp)
     app.register_blueprint(tracking_bp)
     app.register_blueprint(web_bp)
 
@@ -101,6 +125,8 @@ def register_blueprints(app: Flask) -> None:
     # used by third parties that cannot hold a CSRF token.
     csrf.exempt(auth_bp)
     csrf.exempt(webhooks_bp)
+    csrf.exempt(sms_webhooks_bp)
+    csrf.exempt(bird_sms_webhooks_bp)
     csrf.exempt(tracking_bp)
 
 
@@ -112,7 +138,9 @@ def register_auth_guard(app: Flask) -> None:
         if not auth.auth_required() or auth.is_authenticated():
             return None
         endpoint = request.endpoint
-        if endpoint in _PUBLIC_ENDPOINTS or (endpoint or "").startswith(("tracking.", "webhooks.")):
+        if endpoint in _PUBLIC_ENDPOINTS or (endpoint or "").startswith(
+            ("tracking.", "webhooks.", "sms_webhooks.", "bird_sms_webhooks.")
+        ):
             return None
         if request.path.startswith("/api/"):
             return jsonify({"error": "authentication required"}), 401

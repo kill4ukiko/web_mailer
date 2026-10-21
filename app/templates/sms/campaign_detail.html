@@ -1,0 +1,163 @@
+﻿{% extends "sms/base.html" %}
+{% block title %}{{ campaign.name }} &middot; B SMS &middot; webmailer{% endblock %}
+{% block content %}
+{% set stats = campaign.stats or {} %}
+<p><a class="link" href="{{ url_for('web.sms_index') }}">&larr; B SMS home</a></p>
+
+<div class="section-head">
+  <h1>
+    {{ campaign.name }}
+    <span class="badge badge-{{ campaign.status }}">{{ campaign.status }}</span>
+    {% if campaign.priority == 'high' %}<span class="badge badge-priority">high priority</span>{% endif %}
+    {% if campaign.circuit_state and campaign.circuit_state != 'ok' %}
+    <span class="badge badge-paused">circuit: {{ campaign.circuit_state }}</span>
+    {% endif %}
+  </h1>
+  <div class="actions">
+    {% if campaign.status in ('draft', 'scheduled', 'paused') %}
+    <a class="btn" href="{{ url_for('web.sms_campaign_edit', campaign_id=campaign.id) }}">Edit</a>
+    {% endif %}
+    {% if campaign.status == 'draft' %}
+    <button type="button" class="btn btn-primary" data-sms-action="start">Start sending</button>
+    {% elif campaign.status == 'scheduled' %}
+    <button type="button" class="btn btn-primary" data-sms-action="start">Start now</button>
+    {% elif campaign.status == 'sending' %}
+    <button type="button" class="btn" data-sms-action="pause">Pause</button>
+    {% elif campaign.status in ('paused', 'held') %}
+    <button type="button" class="btn btn-primary" data-sms-action="resume">Resume</button>
+    {% endif %}
+    {% if campaign.status in ('sending', 'scheduled', 'paused', 'held') %}
+    <button type="button" class="btn btn-danger" data-sms-action="cancel">Cancel</button>
+    {% endif %}
+    {% if campaign.status not in ('sending', 'held') %}
+    <button type="button" class="btn btn-danger" data-sms-delete-campaign="{{ campaign.id }}">Delete</button>
+    {% endif %}
+    <span id="sms-action-status" class="muted"></span>
+  </div>
+</div>
+
+{% if campaign.held_reason %}
+<p class="notice">Campaign held: {{ campaign.held_reason }}
+  {% if campaign.held_until %} until {{ campaign.held_until[:19].replace('T', ' ') }}{% endif %}.</p>
+{% endif %}
+
+<section class="cards">
+  <a class="card" href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id, category='sent') }}">
+    <span class="card-value">{{ stats.get('sent', 0) }}</span><span class="card-label">Sent</span>
+  </a>
+  <a class="card" href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id, category='delivered') }}">
+    <span class="card-value">{{ stats.get('delivered', 0) }}</span><span class="card-label">Delivered</span>
+  </a>
+  <a class="card" href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id, category='replied') }}">
+    <span class="card-value">{{ stats.get('replied', 0) }}</span><span class="card-label">Replied</span>
+  </a>
+  <a class="card" href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id, category='bounces') }}">
+    <span class="card-value">{{ stats.get('bounces', 0) }}</span><span class="card-label">Bounces</span>
+  </a>
+  <a class="card" href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id, category='failed') }}">
+    <span class="card-value">{{ stats.get('failed', 0) }}</span><span class="card-label">Failed</span>
+  </a>
+  <div class="card">
+    <span class="card-value">{{ stats.get('credits_used', 0) }}</span><span class="card-label">Credits used</span>
+  </div>
+</section>
+
+<div class="actions">
+  <a class="link" href="{{ url_for('web.sms_campaign_report', campaign_id=campaign.id) }}">Full report &amp; CSV export</a>
+  <span class="muted small">{{ total }} recipient{{ '' if total == 1 else 's' }} attached
+    &middot; {{ stats.get('segments', 0) }} segment{{ '' if stats.get('segments', 0) == 1 else 's' }} billed</span>
+</div>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Message</h2>
+    <div class="pill-row">
+      <span class="badge">{{ campaign.sms_type }}</span>
+      <span class="badge">{{ campaign.sender }}</span>
+      <span class="badge">{{ segments }} segment{{ '' if segments == 1 else 's' }}</span>
+      {% if campaign.unicode_enabled %}<span class="badge">Unicode</span>{% endif %}
+      {% if campaign.include_stop_code %}<span class="badge">STOP line</span>{% endif %}
+    </div>
+  </div>
+  <div class="sms-bubble">{{ preview_content }}</div>
+  <p class="muted small">
+    Created {{ campaign.created_at[:19].replace('T', ' ') if campaign.created_at else '' }}
+    {% if campaign.started_at %}&middot; started {{ campaign.started_at[:19].replace('T', ' ') }}{% endif %}
+    {% if campaign.finished_at %}&middot; finished {{ campaign.finished_at[:19].replace('T', ' ') }}{% endif %}
+    {% if campaign.schedule_at %}&middot; scheduled {{ campaign.schedule_at[:19].replace('T', ' ') }}{% endif %}
+  </p>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Send a test</h2>
+  </div>
+  <form id="sms-test-form" class="form" data-campaign-id="{{ campaign.id }}">
+    <div class="inline-row">
+      <input type="tel" id="sms-test-to" placeholder="+15551234567" required>
+      <button type="submit" class="btn">Send test SMS</button>
+      <span id="sms-test-status" class="muted"></span>
+    </div>
+    <small class="muted">This sends one real SMS through Brevo and consumes credits.</small>
+  </form>
+</section>
+
+{% if campaign.status in ('completed', 'cancelled', 'paused') %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>Reuse this campaign</h2>
+  </div>
+  <p class="muted small">
+    Targets: {{ reuse_counts.get('target', 0) }} selected &middot;
+    {{ reuse_counts.get('previous', 0) }} already messaged in this lineage &middot;
+    {{ reuse_counts.get('new', 0) }} new.
+  </p>
+  <div class="form">
+    <label>Who should receive it?
+      <select id="sms-reuse-mode">
+        <option value="new">Only contacts not yet messaged ({{ reuse_counts.get('new', 0) }})</option>
+        <option value="previous">Only previous recipients ({{ reuse_counts.get('previous', 0) }})</option>
+        <option value="all">Everyone in the lineage ({{ reuse_counts.get('all', 0) }})</option>
+      </select>
+    </label>
+    <div class="form-actions">
+      <button type="button" class="btn" data-sms-reuse="clone">Clone into a new draft</button>
+      {% if campaign.status != 'sending' %}
+      <button type="button" class="btn btn-primary" data-sms-reuse="resend">Resend now</button>
+      {% endif %}
+      <span id="sms-reuse-status" class="muted"></span>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section>
+  <div class="section-head">
+    <h2>Recipients</h2>
+    <span class="muted small">Showing {{ recipients|length }} of {{ total }}</span>
+  </div>
+  {% if recipients %}
+  <table class="table">
+    <thead>
+      <tr><th>Phone</th><th>Name</th><th>Status</th><th>Sent</th><th>Delivered</th><th class="num">Credits</th><th>Error</th></tr>
+    </thead>
+    <tbody>
+      {% for r in recipients %}
+      <tr>
+        <td>{{ r.contact.get('phone') or 'â€”' }}</td>
+        <td>{{ ((r.contact.get('first_name') or '') ~ ' ' ~ (r.contact.get('last_name') or '')).strip() or 'â€”' }}</td>
+        <td><span class="badge badge-{{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td>
+        <td class="muted">{{ r.sent_at[:19].replace('T', ' ') if r.sent_at else '' }}</td>
+        <td class="muted">{{ r.delivered_at[:19].replace('T', ' ') if r.delivered_at else '' }}</td>
+        <td class="num">{{ r.credits_used if r.credits_used is not none else '' }}</td>
+        <td class="muted small">{{ r.last_error or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No recipients attached.
+    <a class="link" href="{{ url_for('web.sms_campaign_edit', campaign_id=campaign.id) }}">Edit the audience</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}

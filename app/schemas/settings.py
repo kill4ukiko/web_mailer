@@ -1,4 +1,4 @@
-"""Application-wide (global) mailer settings schemas."""
+﻿"""Application-wide (global) mailer settings schemas."""
 from __future__ import annotations
 
 from datetime import date, time
@@ -64,3 +64,7 @@ class SettingsUpdate(BaseModel):
 
     # Provider plan (drives recommended values + hard limits)
     brevo_plan: Literal["free", "starter", "business", "enterprise"] | None = None
+
+    # Per-section Telegram overrides (empty string clears the DB override)
+    telegram_bot_token: str | None = Field(default=None, max_length=512)
+    telegram_chat_id: str | None = Field(default=None, max_length=128)

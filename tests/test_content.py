@@ -1,4 +1,4 @@
-"""Unit tests for outbound content processing (pixel, links, unsubscribe)."""
+﻿"""Unit tests for outbound content processing (pixel, links, unsubscribe)."""
 from __future__ import annotations
 
 from app.core.content import (
@@ -24,7 +24,9 @@ def test_build_urls():
     assert build_click_url(BASE, CID, RID, "https://e.com/a?x=1") == (
         f"{BASE}/api/track/{CID}/{RID}/click?target_url=https%3A%2F%2Fe.com%2Fa%3Fx%3D1"
     )
-    assert build_unsubscribe_url(BASE, CID, RID) == f"{BASE}/api/unsubscribe?cid={CID}&rid={RID}"
+    unsubscribe = build_unsubscribe_url(BASE, CID, RID)
+    assert unsubscribe.startswith(f"{BASE}/api/unsubscribe?cid={CID}&rid={RID}&t=")
+    assert len(unsubscribe.split("&t=")[1]) >= 32
 
 
 def test_inject_pixel_before_body_close():

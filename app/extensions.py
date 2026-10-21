@@ -1,4 +1,4 @@
-"""Shared extension instances: Supabase, Redis, Limiter and Celery.
+﻿"""Shared extension instances: Supabase, Redis, Limiter and Celery.
 
 These are intentionally written as thin holders so that they can be
 initialised lazily inside the Flask application factory and inside the
@@ -94,6 +94,65 @@ def _default_beat_schedule() -> dict:
         "reconcile-stuck-campaigns": {
             "task": "app.workers.tasks_monitor.reconcile_stuck_campaigns",
             "schedule": 300.0,  # every 5 minutes
+            "options": {"queue": "monitor"},
+        },
+        "evaluate-sms-circuit-breakers": {
+            "task": "app.workers.tasks_sms_monitor.evaluate_sms_circuit",
+            "schedule": 300.0,  # every 5 minutes
+            "options": {"queue": "monitor"},
+        },
+        "dispatch-scheduled-sms": {
+            "task": "app.workers.tasks_sms.dispatch_scheduled_sms",
+            "schedule": 60.0,  # every minute
+            "options": {"queue": "celery"},
+        },
+        "resume-sending-sms": {
+            "task": "app.workers.tasks_sms.resume_sending_sms",
+            "schedule": 120.0,  # every 2 minutes
+            "options": {"queue": "celery"},
+        },
+        "resume-held-sms": {
+            "task": "app.workers.tasks_sms.resume_held_sms_campaigns",
+            "schedule": 60.0,  # every minute (cap boundary hand-back)
+            "options": {"queue": "celery"},
+        },
+        "sms-progress-alerts": {
+            "task": "app.workers.tasks_sms.sms_progress_alerts",
+            "schedule": 900.0,  # every 15 minutes
+            "options": {"queue": "celery"},
+        },
+        "reconcile-stuck-sms-campaigns": {
+            "task": "app.workers.tasks_sms_monitor.reconcile_stuck_sms_campaigns",
+            "schedule": 300.0,  # every 5 minutes
+            "options": {"queue": "monitor"},
+        },        "evaluate-bird-sms-circuit-breakers": {
+            "task": "app.workers.tasks_bird_sms_monitor.evaluate_bird_sms_circuit",
+            "schedule": 300.0,
+            "options": {"queue": "monitor"},
+        },
+        "dispatch-scheduled-bird-sms": {
+            "task": "app.workers.tasks_bird_sms.dispatch_scheduled_bird_sms",
+            "schedule": 60.0,
+            "options": {"queue": "celery"},
+        },
+        "resume-sending-bird-sms": {
+            "task": "app.workers.tasks_bird_sms.resume_sending_bird_sms",
+            "schedule": 120.0,
+            "options": {"queue": "celery"},
+        },
+        "resume-held-bird-sms": {
+            "task": "app.workers.tasks_bird_sms.resume_held_bird_sms_campaigns",
+            "schedule": 60.0,
+            "options": {"queue": "celery"},
+        },
+        "bird-sms-progress-alerts": {
+            "task": "app.workers.tasks_bird_sms.bird_sms_progress_alerts",
+            "schedule": 900.0,
+            "options": {"queue": "celery"},
+        },
+        "reconcile-stuck-bird-sms-campaigns": {
+            "task": "app.workers.tasks_bird_sms_monitor.reconcile_stuck_bird_sms_campaigns",
+            "schedule": 300.0,
             "options": {"queue": "monitor"},
         },
     }

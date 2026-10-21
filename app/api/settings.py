@@ -1,4 +1,4 @@
-"""Global mailer settings endpoints (sender, thresholds, pacing, safety)."""
+﻿"""Global mailer settings endpoints (sender, thresholds, pacing, safety)."""
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
@@ -38,6 +38,7 @@ _PUBLIC_FIELDS = {
     "collision_window_seconds",
     "cross_gap_min_seconds",
     "cross_gap_max_seconds",
+    "telegram_chat_id",
     "updated_at",
 }
 
@@ -55,8 +56,12 @@ def merged_settings() -> dict:
 
 @bp.get("")
 def get_settings():
-    """GET /api/settings — current global defaults + active plan limits."""
+    """GET /api/settings - current global defaults + active plan limits."""
+    from app.core.telegram import telegram_public_state
+
     settings = merged_settings()
+    settings.pop("telegram_bot_token", None)
+    settings.update(telegram_public_state("email"))
     return jsonify({
         "settings": settings,
         "plan": plan_limits(settings.get("brevo_plan")),
@@ -65,7 +70,7 @@ def get_settings():
 
 @bp.patch("")
 def update_settings():
-    """PATCH /api/settings — update global defaults (partial)."""
+    """PATCH /api/settings â€” update global defaults (partial)."""
     try:
         payload = SettingsUpdate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -102,6 +107,11 @@ def update_settings():
 
         killswitch.set_paused(bool(data["sending_paused"]))
 
+    if "telegram_bot_token" in data or "telegram_chat_id" in data:
+        from app.core import telegram
+
+        telegram.clear_cache("email")
+
     result = _public(updated) if updated else merged_settings()
     return jsonify({
         "settings": result,
@@ -112,13 +122,13 @@ def update_settings():
 
 @bp.get("/defaults")
 def get_fallback_defaults():
-    """GET /api/settings/defaults — config-derived defaults (for help text)."""
+    """GET /api/settings/defaults â€” config-derived defaults (for help text)."""
     return jsonify({"defaults": fallback_settings()}), 200
 
 
 @bp.get("/plans")
 def list_plans():
-    """GET /api/settings/plans — every plan's recommended values + limits."""
+    """GET /api/settings/plans â€” every plan's recommended values + limits."""
     from app.config import BREVO_PLANS
 
     return jsonify({"plans": {key: plan_limits(key) for key in BREVO_PLANS}}), 200
@@ -126,7 +136,7 @@ def list_plans():
 
 @bp.post("/test-email")
 def send_test_email():
-    """POST /api/settings/test-email  {to?} — send a diagnostic email.
+    """POST /api/settings/test-email  {to?} â€” send a diagnostic email.
 
     Uses the current sender identity and a minimal body so an operator can
     confirm the pipeline and inspect headers (DKIM/DMARC) in their inbox.
@@ -164,10 +174,13 @@ def send_test_email():
 
 @bp.post("/test-telegram")
 def send_test_telegram():
-    """POST /api/settings/test-telegram — send a test Telegram alert."""
+    """POST /api/settings/test-telegram - send a test alert for a section."""
     from app.core.notifications import notify
 
-    ok = notify("webmailer test", ["Telegram alerts are working."], level="success")
+    section = (request.get_json(silent=True) or {}).get("section") or request.args.get("section") or "email"
+    if section not in ("email", "b_sms", "bird_sms"):
+        return jsonify({"error": "unknown Telegram section"}), 422
+    ok = notify("webmailer test", ["Telegram alerts are working."], level="success", section=section)
     if not ok:
         return jsonify({"error": "Telegram send failed (check token/chat id)"}), 502
     return jsonify({"sent": True}), 200

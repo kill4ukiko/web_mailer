@@ -1,0 +1,110 @@
+﻿{% extends "bird/base.html" %}
+{% block title %}Bird SMS contacts &middot; webmailer{% endblock %}
+{% block content %}
+<div class="section-head">
+  <h1>Bird SMS contacts <span class="muted">({{ total }})</span></h1>
+  <div class="actions"><button type="button" class="btn btn-primary" id="bird-toggle-import">Import / add contacts</button></div>
+</div>
+<p class="muted small">Phone numbers are stored in E.164 format and are completely separate from email and Brevo SMS contacts.</p>
+
+<section id="bird-import-panel" class="form" hidden>
+  <h2>Import contacts</h2>
+  <label>CSV or Excel file
+    <input type="file" id="bird-import-file" accept=".csv,.xls,.xlsx">
+  </label>
+  <div class="form-actions">
+    <button type="button" class="btn" id="bird-preview-btn">Read file</button>
+    <span id="bird-import-status" class="muted"></span>
+  </div>
+  <div id="bird-mapping-section" hidden>
+    <h3>Map columns</h3>
+    <div class="grid-2">
+      <label>Phone <span class="req">(required)</span><select id="bird-map-phone"></select></label>
+      <label>First name <select id="bird-map-first_name"></select></label>
+      <label>Last name <select id="bird-map-last_name"></select></label>
+      <label>Country <select id="bird-map-country"></select></label>
+    </div>
+    <p class="muted small" id="bird-preview-count"></p>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" id="bird-import-btn">Import contacts</button>
+      <span id="bird-import-result" class="muted"></span>
+    </div>
+  </div>
+  <fieldset>
+    <legend>Add a single contact</legend>
+    <div class="grid-2">
+      <label>Phone <input type="tel" id="bird-new-phone" placeholder="+15551234567"></label>
+      <label>First name <input type="text" id="bird-new-first" maxlength="255"></label>
+      <label>Last name <input type="text" id="bird-new-last" maxlength="255"></label>
+    </div>
+    <div class="form-actions">
+      <button type="button" class="btn btn-primary" id="bird-add-contact-btn">Add contact</button>
+      <span id="bird-add-status" class="muted"></span>
+    </div>
+  </fieldset>
+</section>
+
+<h2>Lists</h2>
+<form id="bird-list-create-form" class="form">
+  <fieldset>
+    <legend>New Bird SMS list</legend>
+    <div class="grid-2">
+      <label>List name <input type="text" name="name" required maxlength="255" placeholder="October leads"></label>
+      <label>Description <input type="text" name="description" maxlength="1000"></label>
+    </div>
+    <label>Add by phone <textarea name="phones" rows="2" placeholder="+15551234567, +15557654321"></textarea></label>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Create list</button><span id="bird-list-status" class="muted"></span></div>
+  </fieldset>
+</form>
+<div id="bird-lists-container">
+  {% for l in lists %}
+  <div class="list-card" data-bird-list-id="{{ l.id }}">
+    <div class="list-head">
+      <div><strong>{{ l.name }}</strong> <span class="muted">&middot; {{ l.member_count }} contact{{ '' if l.member_count == 1 else 's' }}</span>
+        {% if l.description %}<div class="muted small">{{ l.description }}</div>{% endif %}</div>
+      <div class="actions"><button type="button" class="btn btn-sm btn-danger" data-bird-delete-list="{{ l.id }}">Delete</button></div>
+    </div>
+  </div>
+  {% endfor %}
+  {% if not lists %}<p class="muted" id="bird-no-lists">No Bird SMS lists yet.</p>{% endif %}
+</div>
+
+<h2>All Bird SMS contacts</h2>
+<div class="filter-row">
+  <a class="pill{{ ' pill-active' if not status and not show_deleted else '' }}" href="{{ url_for('web.bird_sms_contacts_page') }}">All</a>
+  <a class="pill{{ ' pill-active' if status == 'active' else '' }}" href="{{ url_for('web.bird_sms_contacts_page', status='active') }}">Active</a>
+  <a class="pill{{ ' pill-active' if status == 'unsubscribed' else '' }}" href="{{ url_for('web.bird_sms_contacts_page', status='unsubscribed') }}">Unsubscribed</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_hard' else '' }}" href="{{ url_for('web.bird_sms_contacts_page', status='bounced_hard') }}">Hard bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'bounced_soft' else '' }}" href="{{ url_for('web.bird_sms_contacts_page', status='bounced_soft') }}">Soft bounced</a>
+  <a class="pill{{ ' pill-active' if status == 'invalid' else '' }}" href="{{ url_for('web.bird_sms_contacts_page', status='invalid') }}">Invalid</a>
+  <a class="pill{{ ' pill-active' if show_deleted else '' }}" href="{{ url_for('web.bird_sms_contacts_page', deleted='1') }}">Deleted (restore)</a>
+</div>
+
+{% if contacts %}
+<table class="table" id="bird-contacts-table">
+  <thead><tr><th>Phone</th><th>First name</th><th>Last name</th><th>Status</th><th>Delivery</th><th></th></tr></thead>
+  <tbody>
+    {% for c in contacts %}
+    <tr data-bird-contact-id="{{ c.id }}">
+      <td><input class="inline-edit" data-field="phone" value="{{ c.phone }}"></td>
+      <td><input class="inline-edit" data-field="first_name" value="{{ c.first_name or '' }}"></td>
+      <td><input class="inline-edit" data-field="last_name" value="{{ c.last_name or '' }}"></td>
+      <td><span class="badge badge-{{ c.status }}">{{ c.status }}</span></td>
+      <td>{% if c.last_recipient_status %}<span class="badge badge-delivery-{{ c.last_recipient_status }}">{{ c.last_recipient_status.replace('_', ' ') }}</span>{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+      <td class="num">
+        <button type="button" class="btn btn-sm" data-bird-save-contact="{{ c.id }}">Save</button>
+        {% if show_deleted %}
+        <button type="button" class="btn btn-sm" data-bird-restore-contact="{{ c.id }}">Restore</button>
+        {% else %}
+        <button type="button" class="btn btn-sm btn-danger" data-bird-delete-contact="{{ c.id }}">Delete</button>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="muted small">Page {{ page }} &middot; <a class="link" href="{{ url_for('web.bird_sms_contacts_page', page=page+1, status=status, deleted='1' if show_deleted else none) }}">Next page</a></p>
+{% else %}
+<p class="muted">No contacts found.</p>
+{% endif %}
+{% endblock %}

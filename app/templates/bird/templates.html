@@ -1,0 +1,80 @@
+﻿{% extends "bird/base.html" %}
+{% block title %}Bird SMS templates &middot; webmailer{% endblock %}
+{% block content %}
+<h1>Bird SMS templates</h1>
+<p class="muted">Saved message bodies for campaigns plus read-only Bird template slugs from the template catalogue.</p>
+
+<section class="panel">
+  <div class="panel-head"><h2>Saved templates</h2><button type="button" class="btn btn-sm" id="bird-template-new-btn">New template</button></div>
+  <table class="table" id="bird-templates-table">
+    <thead><tr><th>Name</th><th>Category</th><th>Content</th><th>Updated</th><th></th></tr></thead>
+    <tbody>
+      {% for t in templates %}
+      <tr data-bird-template-id="{{ t.id }}">
+        <td>{{ t.name }}</td>
+        <td><span class="badge">{{ t.category }}</span></td>
+        <td class="muted">{{ t.content[:70] }}{% if t.content|length > 70 %}&hellip;{% endif %}</td>
+        <td class="muted">{{ t.updated_at[:19].replace('T', ' ') if t.updated_at else '' }}</td>
+        <td class="num">
+          <button type="button" class="btn btn-sm" data-bird-template-edit="{{ t.id }}">Edit</button>
+          <button type="button" class="btn btn-sm btn-danger" data-bird-template-delete="{{ t.id }}">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not templates %}<tr><td colspan="5" class="muted">No local templates yet.</td></tr>{% endif %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <div class="panel-head"><h2 id="bird-template-editor-title">New template</h2></div>
+  <form id="bird-template-form" class="form">
+    <input type="hidden" name="id" value="">
+    <div class="grid-2">
+      <label>Template name <input type="text" name="name" required maxlength="255"></label>
+      <label>Category
+        <select name="category">
+          <option value="transactional">Transactional</option>
+          <option value="marketing">Marketing</option>
+          <option value="authentication">Authentication</option>
+          <option value="service">Service</option>
+        </select>
+      </label>
+    </div>
+    <label>Message body
+      <textarea name="content" rows="6" required placeholder="Hi {{ '{{first_name}}' }}, your order is ready."></textarea>
+      <small class="muted">Merge tags: {{ '{{first_name}}' }}, {{ '{{last_name}}' }}, {{ '{{phone}}' }}. Bird caps a message at 12 segments.</small>
+    </label>
+    <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code"> Append STOP line</span></label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Save template</button>
+      <button type="button" class="btn" id="bird-template-preview-btn">Preview cost</button>
+      <button type="button" class="btn" id="bird-template-reset-btn">Clear</button>
+      <span id="bird-template-status" class="muted"></span>
+    </div>
+  </form>
+  <div id="bird-template-preview" class="preview-wrap" hidden>
+    <h3>Rendered preview</h3><div class="sms-bubble" id="bird-template-preview-body"></div>
+    <p class="muted small" id="bird-template-preview-meta"></p>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-head">
+    <h2>Bird template catalogue</h2>
+    <button type="button" class="btn btn-sm" id="bird-catalog-refresh">Refresh</button>
+  </div>
+  {% if catalog_error %}<p class="notice small">{{ catalog_error }}</p>{% endif %}
+  <p class="muted small">Catalogue reads need a Bird key with the <code>sms_management</code> scope. If unavailable, enter the slug manually in the campaign editor.</p>
+  <table class="table">
+    <thead><tr><th>Slug</th><th>Name</th><th>Language</th><th>Category</th></tr></thead>
+    <tbody>
+      {% for item in catalogue %}
+      <tr><td><code>{{ item.slug }}</code></td><td>{{ item.name or '' }}</td><td>{{ item.language or '' }}</td><td>{{ item.category or '' }}</td></tr>
+      {% endfor %}
+      {% if not catalogue %}<tr><td colspan="4" class="muted">No catalogue entries loaded.</td></tr>{% endif %}
+    </tbody>
+  </table>
+</section>
+<script type="application/json" id="bird-templates-data">{{ templates | tojson }}</script>
+{% endblock %}

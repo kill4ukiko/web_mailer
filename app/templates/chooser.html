@@ -1,0 +1,55 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>webmailer &middot; choose a channel</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="chooser-page">
+  <main class="chooser">
+    <header class="chooser-head">
+      <div class="brand">webmailer</div>
+      <p class="muted">Choose a channel to manage. Email, B SMS and Bird SMS data are kept completely separate.</p>
+    </header>
+
+    <div class="chooser-grid">
+      <a class="channel-card" href="{{ url_for('web.index') }}">
+        <span class="channel-icon" aria-hidden="true">&#9993;</span>
+        <h1>Emailer</h1>
+        <p class="muted">
+          Contacts, lists, rich campaigns, templates, pacing, deliverability
+          and reputation reporting.
+        </p>
+        <span class="btn btn-primary">Open emailer</span>
+      </a>
+
+      <a class="channel-card" href="{{ url_for('web.sms_index') }}">
+        <span class="channel-icon" aria-hidden="true">&#128241;</span>
+        <h1>B SMS</h1>
+        <p class="muted">
+          Brevo SMS: phone contacts and lists, scheduled campaigns, credit caps,
+          templates, delivery reports and live Brevo credit balance.
+        </p>
+        <span class="btn btn-primary">Open B SMS</span>
+      </a>
+
+      <a class="channel-card" href="{{ url_for('web.bird_sms_index') }}">
+        <span class="channel-icon" aria-hidden="true">&#128038;</span>
+        <h1>Bird SMS</h1>
+        <p class="muted">
+          Bird SMS: an isolated workspace with its own contacts, lists, templates,
+          spend caps, delivery webhooks and Telegram alerts.
+        </p>
+        <span class="btn btn-primary">Open Bird SMS</span>
+      </a>
+    </div>
+
+    <footer class="chooser-foot">
+      <a class="link" href="{{ url_for('web.about_page') }}">Setup guide</a>
+      <span class="muted">&middot;</span>
+      <a class="link" href="/api/health" target="_blank" rel="noopener">API health</a>
+    </footer>
+  </main>
+</body>
+</html>

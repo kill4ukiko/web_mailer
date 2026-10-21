@@ -1,4 +1,4 @@
-"""Open pixel, click redirect, and RFC 8058 one-click unsubscribe endpoints."""
+﻿"""Open pixel, click redirect, and RFC 8058 one-click unsubscribe endpoints."""
 from __future__ import annotations
 
 import base64
@@ -93,11 +93,75 @@ def _is_web_url(url: str) -> bool:
 
 @bp.get("/api/unsubscribe")
 def unsubscribe_page():
-    """GET unsubscribe via List-Unsubscribe header URL (?cid&rid)."""
-    campaign_id = request.args.get("cid")
-    recipient_id = request.args.get("rid")
+    """Render a confirmation page. A GET must never change state.
+
+    Mail clients and security scanners prefetch links, so the old behaviour of
+    unsubscribing on GET caused accidental opt-outs. The one-click POST endpoint
+    (RFC 8058) still applies immediately.
+    """
+    import html as html_lib
+
+    from app.core.content import verify_unsubscribe_token
+
+    campaign_id = (request.args.get("cid") or "").strip()
+    recipient_id = (request.args.get("rid") or "").strip()
+    token = request.args.get("t")
+    valid = bool(campaign_id and recipient_id and verify_unsubscribe_token(
+        campaign_id, recipient_id, token
+    ))
+    if not valid:
+        return Response(
+            _unsubscribe_page("<h1>Invalid unsubscribe link</h1>"
+                              "<p>This link is incomplete or has expired.</p>", status=400),
+            status=400, mimetype="text/html",
+        )
+    body = (
+        "<h1>Unsubscribe?</h1>"
+        "<p>Click the button below to stop receiving these emails.</p>"
+        f'<form method="post" action="/api/unsubscribe/confirm">'
+        f'<input type="hidden" name="cid" value="{html_lib.escape(campaign_id)}">'
+        f'<input type="hidden" name="rid" value="{html_lib.escape(recipient_id)}">'
+        f'<input type="hidden" name="t" value="{html_lib.escape(token or "")}">'
+        '<button type="submit">Unsubscribe me</button></form>'
+        '<p class="muted">You can safely close this page without changing anything.</p>'
+    )
+    return Response(_unsubscribe_page(body), mimetype="text/html")
+
+
+def _unsubscribe_page(body: str, status: int = 200) -> str:
+    return (
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>Unsubscribe</title><style>"
+        "body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:34rem;"
+        "margin:10vh auto;padding:0 1.25rem;color:#172033;line-height:1.55}"
+        "button{background:#2563eb;color:#fff;border:0;border-radius:.55rem;"
+        "padding:.8rem 1.3rem;font-size:1rem;cursor:pointer}"
+        ".muted{color:#667085;font-size:.9rem}</style></head><body>"
+        f"{body}</body></html>"
+    )
+
+
+@bp.post("/api/unsubscribe/confirm")
+@limiter.limit("60 per minute")
+def unsubscribe_confirm():
+    """Apply an unsubscribe after the user clicks the confirmation page."""
+    from app.core.content import verify_unsubscribe_token
+
+    data = request.get_json(silent=True) or request.form
+    campaign_id = str(data.get("cid") or "").strip()
+    recipient_id = str(data.get("rid") or "").strip()
+    token = data.get("t")
+    if not campaign_id or not recipient_id:
+        return Response("invalid unsubscribe link", status=400, mimetype="text/plain")
+    if not verify_unsubscribe_token(campaign_id, recipient_id, token):
+        return Response("invalid unsubscribe token", status=400, mimetype="text/plain")
     _apply_unsubscribe(campaign_id, recipient_id)
-    return Response("You have been unsubscribed.", mimetype="text/plain")
+    return Response(
+        _unsubscribe_page("<h1>You are unsubscribed</h1>"
+                          "<p>No further emails will be sent to this address.</p>"),
+        mimetype="text/html",
+    )
 
 
 @bp.post("/api/unsubscribe")

@@ -94,6 +94,36 @@ def seconds_until_window_open(
     return max(1, int(delta))
 
 
+def seconds_until_window_close(
+    window_start: object,
+    window_end: object,
+    tz_name: str | None,
+    now: datetime | None = None,
+) -> int | None:
+    """Seconds until the currently-open window closes.
+
+    Returns ``None`` when no window is configured (always open) and ``0`` when
+    the window is currently closed. Windows where start > end wrap across
+    midnight, so the close can be tomorrow.
+    """
+    start = _parse_time(window_start)
+    end = _parse_time(window_end)
+    if start is None or end is None:
+        return None
+    if not is_within_window(start, end, tz_name, now):
+        return 0
+
+    now = now or datetime.now(timezone.utc)
+    local = now.astimezone(_tz(tz_name))
+    closing = local.replace(
+        hour=end.hour, minute=end.minute, second=end.second, microsecond=0
+    )
+    if closing <= local:
+        closing += timedelta(days=1)
+    delta = (closing - local).total_seconds()
+    return max(1, int(delta)) if delta > 0 else 0
+
+
 def batch_countdown_seconds(
     batch_interval_ms: int | None,
     stagger_seconds: int | None = None,

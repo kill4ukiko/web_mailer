@@ -1,4 +1,4 @@
-"""Server-rendered dashboard UI for web_mailer.
+﻿"""Server-rendered dashboard UI for web_mailer.
 
 Pages render data straight from Supabase; mutations reuse the validated
 ``/api/*`` endpoints via fetch (see static/app.js). This keeps the web layer
@@ -31,6 +31,12 @@ def _count(table: str, **eq_filters: str) -> int:
 
 
 @bp.get("/")
+def home():
+    """Channel chooser: pick the email or SMS workspace."""
+    return render_template("chooser.html")
+
+
+@bp.get("/email")
 def index():
     sb = get_supabase()
     contacts = sb.list_contacts(page=1, limit=6)
@@ -127,8 +133,23 @@ def deliverability_page():
 @bp.get("/settings")
 def settings_page():
     from app.api.settings import merged_settings
+    from app.core.mailer_config import runtime_caps
+    from app.core.pacing import throughput_per_hour
 
-    return render_template("settings.html", settings=merged_settings())
+    settings = merged_settings()
+    from app.core.telegram import telegram_public_state
+
+    settings.pop("telegram_bot_token", None)
+    settings.update(telegram_public_state("email"))
+    caps = runtime_caps(settings)
+    rate = caps["rate"] or settings.get("send_rate_per_minute") or 0
+    estimate = throughput_per_hour(
+        rate,
+        settings.get("default_stagger_seconds") or 0,
+        caps["hourly"],
+    ) if rate else None
+
+    return render_template("settings.html", settings=settings, estimate=estimate)
 
 
 @bp.get("/about")
@@ -284,3 +305,482 @@ def _report_match(category: str, recipient: dict) -> bool:
     from app.api.campaigns import _report_matches
 
     return _report_matches(category, recipient)
+
+
+# ---------------------------------------------------------------------------- #
+# SMS workspace
+# ---------------------------------------------------------------------------- #
+_SMS_STATUS_ORDER = ["draft", "scheduled", "sending", "held", "paused", "completed", "cancelled"]
+
+
+def _sms_status_counts(sb) -> tuple[list[dict], dict[str, int]]:
+    rows = (
+        sb.client.table("sms_campaigns")
+        .select("status")
+        .execute()
+        .data
+        or []
+    )
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+    return rows, counts
+
+
+def _sms_campaign_form_context(campaign: dict | None = None) -> dict:
+    from app.api.sms_campaigns import _global_defaults
+    from app.api.sms_settings import merged_sms_settings
+    from app.core.sms_guard import sms_plan_limits
+
+    sb = get_supabase()
+    settings = merged_sms_settings()
+    lists = sb.list_sms_lists()
+    campaign_list_ids: list[str] = []
+    recipient_count = 0
+    if campaign:
+        campaign_list_ids = [entry["id"] for entry in sb.list_sms_campaign_lists(campaign["id"])]
+        recipient_count = sb.count_sms_recipients(campaign["id"])
+    return {
+        "campaign": campaign,
+        "settings": settings,
+        "defaults": _global_defaults(sb),
+        "lists": lists,
+        "templates": sb.list_sms_templates(),
+        "campaign_list_ids": campaign_list_ids,
+        "recipient_count": recipient_count,
+        "plan": sms_plan_limits(settings.get("sms_plan")),
+    }
+
+
+@bp.get("/sms")
+def sms_index():
+    """SMS home: live plan, credits, volume counters and recent campaigns."""
+    from app.core.sms_config import effective_sms_settings
+    from app.core.sms_guard import sms_plan_limits
+
+    sb = get_supabase()
+    _, status_counts = _sms_status_counts(sb)
+    campaigns = (
+        sb.client.table("sms_campaigns")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(25)
+        .execute()
+        .data
+        or []
+    )
+    settings = effective_sms_settings(sb)
+    totals = {
+        "contacts": sb.list_sms_contacts(page=1, limit=1)["total"],
+        "active": _count("sms_contacts", status="active"),
+        "lists": len(sb.list_sms_lists()),
+        "campaigns": sum(status_counts.values()),
+        "sending": status_counts.get("sending", 0),
+    }
+    try:
+        from app.core.sms_credits import sms_credit_snapshot
+
+        credits = sms_credit_snapshot()
+    except Exception:  # noqa: BLE001 - never break the dashboard
+        credits = {"available": False, "credits": None, "low": False,
+                   "threshold": settings.get("low_credit_threshold")}
+    return render_template(
+        "sms/index.html",
+        totals=totals,
+        campaigns=campaigns,
+        status_counts=status_counts,
+        status_order=_SMS_STATUS_ORDER,
+        settings=settings,
+        plan=sms_plan_limits(settings.get("sms_plan")),
+        credits=credits,
+    )
+
+
+@bp.get("/sms/contacts")
+def sms_contacts_page():
+    sb = get_supabase()
+    page = max(int(request.args.get("page", 1)), 1)
+    status = request.args.get("status") or None
+    delivery = request.args.get("delivery") or None
+    show_deleted = request.args.get("deleted") in ("1", "true", "yes")
+    data = sb.list_sms_contacts(
+        page=page, limit=50, status=status,
+        include_deleted=show_deleted, delivery=delivery,
+    )
+    return render_template(
+        "sms/contacts.html",
+        contacts=data["items"],
+        total=data["total"],
+        page=page,
+        status=status,
+        delivery=delivery,
+        show_deleted=show_deleted,
+        lists=sb.list_sms_lists(),
+    )
+
+
+@bp.get("/sms/lists")
+def sms_lists_page():
+    """Lists live on the SMS contacts hub."""
+    return redirect(url_for("web.sms_contacts_page"))
+
+
+@bp.get("/sms/templates")
+def sms_templates_page():
+    from app.core.sms_guard import sms_plan_limits
+    from app.api.sms_settings import merged_sms_settings
+
+    settings = merged_sms_settings()
+    return render_template(
+        "sms/templates.html",
+        templates=get_supabase().list_sms_templates(),
+        settings=settings,
+        plan=sms_plan_limits(settings.get("sms_plan")),
+    )
+
+
+@bp.get("/sms/campaigns/new")
+def sms_campaign_new():
+    return render_template(
+        "sms/campaign_form.html",
+        **_sms_campaign_form_context(None),
+    )
+
+
+@bp.get("/sms/campaigns/<campaign_id>/edit")
+def sms_campaign_edit(campaign_id: str):
+    campaign = get_supabase().get_sms_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+    return render_template(
+        "sms/campaign_form.html",
+        **_sms_campaign_form_context(campaign),
+    )
+
+
+@bp.get("/sms/campaigns/<campaign_id>")
+def sms_campaign_detail(campaign_id: str):
+    from app.core.sms_content import PREVIEW_CONTEXT, render_sms
+    from app.core.sms_guard import sms_plan_limits
+    from app.api.sms_settings import merged_sms_settings
+
+    sb = get_supabase()
+    campaign = sb.get_sms_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+
+    recipients = sb.list_sms_recipients(campaign_id, limit=200)
+    contact_ids = list({r["contact_id"] for r in recipients if r.get("contact_id")})
+    contacts_map: dict[str, dict] = {}
+    if contact_ids:
+        rows = (
+            sb.client.table("sms_contacts")
+            .select("id,phone,first_name,last_name,status")
+            .in_("id", contact_ids)
+            .execute()
+            .data
+            or []
+        )
+        contacts_map = {r["id"]: r for r in rows}
+    for recipient in recipients:
+        recipient["contact"] = contacts_map.get(recipient.get("contact_id"), {})
+
+    settings = merged_sms_settings()
+    try:
+        preview_content, segments = render_sms(
+            campaign.get("content") or "",
+            PREVIEW_CONTEXT,
+            include_stop=bool(campaign.get("include_stop_code"))
+            or campaign.get("sms_type") == "marketing",
+            unicode_enabled=bool(campaign.get("unicode_enabled")),
+        )
+    except Exception:  # noqa: BLE001
+        preview_content, segments = campaign.get("content") or "", 0
+
+    from app.api.sms_campaigns import _reuse_counts
+
+    try:
+        reuse_counts = _reuse_counts(sb, campaign_id)
+    except Exception:  # noqa: BLE001 - pre-migration rows
+        reuse_counts = {"new": 0, "previous": 0, "all": 0}
+
+    total = sb.count_sms_recipients(campaign_id)
+    return render_template(
+        "sms/campaign_detail.html",
+        campaign=campaign,
+        recipients=recipients,
+        total=total,
+        preview_content=preview_content,
+        segments=segments,
+        reuse_counts=reuse_counts,
+        lists=sb.list_sms_campaign_lists(campaign_id),
+        settings=settings,
+        plan=sms_plan_limits(settings.get("sms_plan")),
+    )
+
+
+@bp.get("/sms/campaigns/<campaign_id>/report")
+def sms_campaign_report(campaign_id: str):
+    from app.api.sms_campaigns import REPORT_CATEGORIES, _report_matches, campaign_report_rows
+
+    sb = get_supabase()
+    campaign = sb.get_sms_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+
+    category = (request.args.get("category") or "sent").lower()
+    if category not in REPORT_CATEGORIES:
+        category = "sent"
+
+    recipients = sb.list_sms_recipients(campaign_id, limit=1000000)
+    counts = {c: sum(1 for r in recipients if _report_matches(c, r)) for c in REPORT_CATEGORIES}
+    rows = campaign_report_rows(sb, campaign_id, category)
+
+    return render_template(
+        "sms/campaign_report.html",
+        campaign=campaign,
+        category=category,
+        categories=REPORT_CATEGORIES,
+        counts=counts,
+        rows=rows,
+    )
+
+
+@bp.get("/sms/settings")
+def sms_settings_page():
+    from app.config import SMS_PLANS
+    from app.core.sms_config import fallback_sms_settings
+    from app.core.sms_guard import sms_plan_limits
+    from app.api.sms_settings import merged_sms_settings
+
+    settings = merged_sms_settings()
+    from app.core.telegram import telegram_public_state
+
+    settings.pop("telegram_bot_token", None)
+    settings.update(telegram_public_state("b_sms"))
+    credits = {"available": False, "credits": None, "low": False,
+               "threshold": settings.get("low_credit_threshold")}
+    try:
+        from app.core.sms_credits import sms_credit_snapshot
+
+        credits = sms_credit_snapshot()
+    except Exception:  # noqa: BLE001
+        pass
+
+    return render_template(
+        "sms/settings.html",
+        settings=settings,
+        plan=sms_plan_limits(settings.get("sms_plan")),
+        plans={key: sms_plan_limits(key) for key in SMS_PLANS},
+        defaults=fallback_sms_settings(),
+        credits=credits,
+    )
+
+
+# ---------------------------------------------------------------------------- #
+# Bird SMS workspace
+# ---------------------------------------------------------------------------- #
+_BIRD_STATUS_ORDER = ["draft", "scheduled", "sending", "held", "paused", "completed", "cancelled"]
+
+
+def _bird_store():
+    from app.core.bird_sms_store import get_bird_store
+
+    return get_bird_store()
+
+
+def _bird_status_counts(store) -> tuple[list[dict], dict[str, int]]:
+    rows = store.client.table("bird_sms_campaigns").select("status").execute().data or []
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+    return rows, counts
+
+
+def _bird_campaign_form_context(campaign: dict | None = None) -> dict:
+    from app.api.bird_sms_campaigns import _global_defaults
+    from app.core.bird_sms_config import effective_bird_settings
+    from app.core.bird_template_catalog import fetch_templates
+
+    store = _bird_store()
+    settings = effective_bird_settings(store)
+    campaign_list_ids = []
+    recipient_count = 0
+    if campaign:
+        campaign_list_ids = [e["id"] for e in store.list_sms_campaign_lists(campaign["id"])]
+        recipient_count = store.count_sms_recipients(campaign["id"])
+    catalogue, catalog_error = fetch_templates()
+    return {
+        "campaign": campaign,
+        "settings": settings,
+        "defaults": _global_defaults(store),
+        "lists": store.list_sms_lists(),
+        "templates": store.list_sms_templates(),
+        "catalogue": catalogue,
+        "catalog_error": catalog_error,
+        "campaign_list_ids": campaign_list_ids,
+        "recipient_count": recipient_count,
+    }
+
+
+@bp.get("/bird-sms")
+def bird_sms_index():
+    from app.core.bird_sms_config import effective_bird_settings
+
+    store = _bird_store()
+    _, status_counts = _bird_status_counts(store)
+    campaigns = store.client.table("bird_sms_campaigns").select("*").order(
+        "created_at", desc=True
+    ).limit(25).execute().data or []
+    settings = effective_bird_settings(store)
+    contacts = store.list_sms_contacts(page=1, limit=1)
+    totals = {
+        "contacts": contacts["total"],
+        "active": len(store.client.table("bird_sms_contacts").select("id").eq(
+            "status", "active").is_("deleted_at", "null").execute().data or []),
+        "lists": len(store.list_sms_lists()),
+        "campaigns": sum(status_counts.values()),
+        "sending": status_counts.get("sending", 0),
+    }
+    from datetime import datetime, timezone
+    day_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    try:
+        spent = store.sum_cost_since(day_start)
+    except Exception:  # noqa: BLE001
+        spent = 0.0
+    budget = float(settings.get("max_cost_per_day") or 0)
+    account = {
+        "spent_today": round(spent, 4), "daily_budget": budget,
+        "remaining": round(max(0.0, budget - spent), 4) if budget else None,
+        "low": bool(budget and spent >= budget - float(settings.get("low_budget_threshold") or 0)),
+        "wallet_api_supported": False,
+    }
+    return render_template(
+        "bird/index.html", totals=totals, campaigns=campaigns,
+        status_counts=status_counts, status_order=_BIRD_STATUS_ORDER,
+        settings=settings, account=account,
+    )
+
+
+@bp.get("/bird-sms/contacts")
+def bird_sms_contacts_page():
+    store = _bird_store()
+    page = max(int(request.args.get("page", 1)), 1)
+    data = store.list_sms_contacts(
+        page=page, limit=50,
+        status=request.args.get("status") or None,
+        delivery=request.args.get("delivery") or None,
+        include_deleted=request.args.get("deleted") in ("1", "true", "yes"),
+    )
+    return render_template(
+        "bird/contacts.html", contacts=data["items"], total=data["total"], page=page,
+        status=request.args.get("status") or None,
+        delivery=request.args.get("delivery") or None,
+        show_deleted=request.args.get("deleted") in ("1", "true", "yes"),
+        lists=store.list_sms_lists(),
+    )
+
+
+@bp.get("/bird-sms/lists")
+def bird_sms_lists_page():
+    return redirect(url_for("web.bird_sms_contacts_page"))
+
+
+@bp.get("/bird-sms/templates")
+def bird_sms_templates_page():
+    from app.core.bird_sms_config import effective_bird_settings
+    from app.core.bird_template_catalog import fetch_templates
+
+    catalogue, catalog_error = fetch_templates()
+    return render_template(
+        "bird/templates.html", templates=_bird_store().list_sms_templates(),
+        settings=effective_bird_settings(_bird_store()),
+        catalogue=catalogue, catalog_error=catalog_error,
+    )
+
+
+@bp.get("/bird-sms/campaigns/new")
+def bird_sms_campaign_new():
+    return render_template("bird/campaign_form.html", **_bird_campaign_form_context(None))
+
+
+@bp.get("/bird-sms/campaigns/<campaign_id>/edit")
+def bird_sms_campaign_edit(campaign_id: str):
+    campaign = _bird_store().get_sms_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+    return render_template("bird/campaign_form.html", **_bird_campaign_form_context(campaign))
+
+
+@bp.get("/bird-sms/campaigns/<campaign_id>")
+def bird_sms_campaign_detail(campaign_id: str):
+    from app.core.bird_sms_content import PREVIEW_CONTEXT, render_bird_sms
+
+    store = _bird_store()
+    campaign = store.get_sms_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+    recipients = store.list_sms_recipients(campaign_id, limit=200)
+    contact_ids = list({r["contact_id"] for r in recipients if r.get("contact_id")})
+    contacts_map = {}
+    if contact_ids:
+        rows = store.client.table("bird_sms_contacts").select(
+            "id,phone,first_name,last_name,status"
+        ).in_("id", contact_ids).execute().data or []
+        contacts_map = {r["id"]: r for r in rows}
+    for recipient in recipients:
+        recipient["contact"] = contacts_map.get(recipient.get("contact_id"), {})
+    try:
+        preview_content, segments = render_bird_sms(
+            campaign.get("text") or "", PREVIEW_CONTEXT,
+            include_stop=bool(campaign.get("include_stop_code")),
+            smart_encoding=bool(campaign.get("smart_encoding", True)),
+        )
+    except Exception:  # noqa: BLE001
+        preview_content, segments = campaign.get("text") or "", 0
+    from app.api.bird_sms_campaigns import _reuse_counts
+    try:
+        reuse_counts = _reuse_counts(store, campaign_id)
+    except Exception:  # noqa: BLE001
+        reuse_counts = {"new": 0, "previous": 0, "all": 0}
+    return render_template(
+        "bird/campaign_detail.html", campaign=campaign, recipients=recipients,
+        total=store.count_sms_recipients(campaign_id), preview_content=preview_content,
+        segments=segments, reuse_counts=reuse_counts,
+        lists=store.list_sms_campaign_lists(campaign_id),
+    )
+
+
+@bp.get("/bird-sms/campaigns/<campaign_id>/report")
+def bird_sms_campaign_report(campaign_id: str):
+    from app.api.bird_sms_campaigns import REPORT_CATEGORIES, _report_matches, campaign_report_rows
+
+    store = _bird_store()
+    campaign = store.get_sms_campaign(campaign_id)
+    if campaign is None:
+        abort(404)
+    category = (request.args.get("category") or "sent").lower()
+    if category not in REPORT_CATEGORIES:
+        category = "sent"
+    recipients = store.list_sms_recipients(campaign_id, limit=1000000)
+    counts = {c: sum(1 for r in recipients if _report_matches(c, r)) for c in REPORT_CATEGORIES}
+    return render_template(
+        "bird/campaign_report.html", campaign=campaign, category=category,
+        categories=REPORT_CATEGORIES, counts=counts,
+        rows=campaign_report_rows(store, campaign_id, category),
+    )
+
+
+@bp.get("/bird-sms/settings")
+def bird_sms_settings_page():
+    from app.api.bird_sms_settings import _public
+    from app.core.bird_sms_config import effective_bird_settings, fallback_bird_settings
+    from app.core.bird_sms_store import get_bird_store
+    from app.core.telegram import telegram_public_state
+
+    settings = _public(effective_bird_settings(None))
+    settings.update(telegram_public_state("bird_sms"))
+    return render_template(
+        "bird/settings.html", settings=settings, defaults=fallback_bird_settings(),
+        store_configured=get_bird_store() is not None,
+    )

@@ -23,10 +23,12 @@ bp = Blueprint("campaigns", __name__, url_prefix="/api/campaigns")
 _PRIORITY_BLOCKING = ("sending", "scheduled", "paused", "held")
 
 ACTION_MAP = {
-    "start": {"status": "sending", "started_at": "now()", "finished_at": None, "circuit_state": "ok"},
-    "resume": {"status": "sending", "finished_at": None, "circuit_state": "ok"},
+    "start": {"status": "sending", "started_at": "now()", "finished_at": None,
+              "circuit_state": "ok", "next_send_at": None},
+    "resume": {"status": "sending", "finished_at": None,
+               "circuit_state": "ok", "next_send_at": None},
     "pause": {"status": "paused"},
-    "cancel": {"status": "cancelled", "finished_at": "now()"},
+    "cancel": {"status": "cancelled", "finished_at": "now()", "next_send_at": None},
     "schedule": {"status": "scheduled"},
 }
 

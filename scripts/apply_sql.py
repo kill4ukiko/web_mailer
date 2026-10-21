@@ -1,4 +1,4 @@
-"""Apply the sql/*.sql migrations to the database in DATABASE_URL.
+﻿"""Apply the sql/*.sql migrations to the database in DATABASE_URL.
 
 Usage:
     python -m scripts.apply_sql                 # apply all migrations in order
@@ -29,6 +29,10 @@ ORDER = [
     "12_email_templates.sql",
     "13_campaign_hold.sql",
     "14_reputation_lifecycle.sql",
+    "15_paced_next_send.sql",
+    "16_sms.sql",
+    "17_telegram_sections.sql",
+    "18_bird_sms.sql",
 ]
 
 
@@ -58,7 +62,7 @@ def apply_migrations(files: list[str] | None = None, log=print) -> list[str]:
                     continue
                 log(f"applying {filename} ...")
                 try:
-                    cur.execute(path.read_text(encoding="utf-8"))
+                    cur.execute(path.read_text(encoding="utf-8-sig"))
                     conn.commit()
                 except Exception as exc:  # noqa: BLE001 - report and continue
                     conn.rollback()

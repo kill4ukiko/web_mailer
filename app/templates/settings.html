@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block title %}Settings &middot; webmailer{% endblock %}
 {% macro info(key) -%}
 <button type="button" class="info-icon" data-info="{{ key }}" aria-label="More information">i</button>
@@ -121,7 +121,12 @@
         Stagger jitter (seconds) {{ info('stagger_seconds') }}
         <input type="number" name="default_stagger_seconds" min="0" max="86400"
                value="{{ s.get('default_stagger_seconds') if s.get('default_stagger_seconds') is not none else 0 }}">
-        <small class="muted">Random extra delay (0..N) between batches.</small>
+        <small class="muted">Random 0..N second delay between every email. Honoured exactly â€”
+          longer delay just schedules the next email later.</small>
+        {% if estimate is not none %}
+        <small class="muted">Estimated throughput: ~{{ estimate }} emails/hour
+          (rate + jitter, capped by the hourly limit).</small>
+        {% endif %}
       </label>
     </div>
   </fieldset>
@@ -198,13 +203,26 @@
         </span>
         <small class="muted">Check the inbox and headers (DKIM/DMARC passed) before a real run.</small>
       </label>
-      <label>
-        Telegram alerts
-        <span class="inline-row">
+      <div>
+        <label>Telegram alerts
+          <small class="muted">Email workspace. Other workspaces can override this independently.</small>
+        </label>
+        <div class="grid-2">
+          <label>Bot token override
+            <input type="password" name="telegram_bot_token" autocomplete="off" placeholder="{{ s.get('telegram_token_hint') or 'Uses TELEGRAM_BOT_TOKEN when blank' }}">
+            <small class="muted">{% if s.get('telegram_token_set') %}Override set ({{ s.get('telegram_token_source') }}). Leave blank to keep it.{% endif %}</small>
+          </label>
+          <label>Chat ID override
+            <input type="text" name="telegram_chat_id" maxlength="128" value="{{ s.get('telegram_chat_id') or '' }}" placeholder="Uses TELEGRAM_CHAT_ID when blank">
+            <small class="muted">Source: {{ {'db': 'database', 'env': 'environment', 'none': 'not configured'}.get(s.get('telegram_chat_source'), 'not configured') }}</small>
+          </label>
+        </div>
+        <div class="inline-row">
           <button type="button" id="test-telegram-btn" class="btn">Send test alert</button>
-        </span>
+          <button type="button" id="clear-telegram-btn" class="btn">Clear overrides</button>
+        </div>
         <small class="muted">Campaign started / completed / held / failed, engagement digests, unsubscribes, circuit trips and tunnel up/down notify this chat.</small>
-      </label>
+      </div>
     </div>
   </fieldset>
 

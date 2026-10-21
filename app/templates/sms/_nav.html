@@ -1,0 +1,8 @@
+﻿{% set endpoint = request.endpoint or '' %}
+<a href="{{ url_for('web.sms_index') }}" class="{{ 'nav-active' if endpoint == 'web.sms_index' else '' }}">B SMS home</a>
+<a href="{{ url_for('web.sms_contacts_page') }}" class="{{ 'nav-active' if endpoint == 'web.sms_contacts_page' else '' }}">Contacts</a>
+<a href="{{ url_for('web.sms_campaign_new') }}" class="{{ 'nav-active' if endpoint == 'web.sms_campaign_new' else '' }}">New B SMS</a>
+<a href="{{ url_for('web.sms_templates_page') }}" class="{{ 'nav-active' if endpoint == 'web.sms_templates_page' else '' }}">Templates</a>
+<a href="{{ url_for('web.sms_settings_page') }}" class="{{ 'nav-active' if endpoint == 'web.sms_settings_page' else '' }}">B SMS settings</a>
+<a href="{{ url_for('web.index') }}" title="Switch to the email workspace">Emailer</a>
+<a href="{{ url_for('web.home') }}" title="Back to the channel chooser">&#8962;</a>

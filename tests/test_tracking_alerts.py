@@ -1,4 +1,4 @@
-"""Recipient-facing tracking endpoint notifies Telegram on unsubscribe."""
+﻿"""Recipient-facing tracking endpoint notifies Telegram on unsubscribe."""
 from __future__ import annotations
 
 
@@ -34,7 +34,13 @@ def test_unsubscribe_endpoint_marks_and_notifies(app, client, supabase, monkeypa
     )
 
     res = client.get(f"/api/unsubscribe?cid={campaign['id']}&rid=r1")
+    assert res.status_code == 200
+    assert supabase.recipients[0]["status"] == "sent"
 
+    res = client.post(
+        "/api/unsubscribe/confirm",
+        data={"cid": campaign["id"], "rid": "r1"},
+    )
     assert res.status_code == 200
     assert supabase.recipients[0]["status"] == "unsubscribed"
     assert calls, "expected a Telegram unsubscribe notification"
@@ -78,6 +84,11 @@ def test_unsubscribe_with_unknown_ids_still_confirms(app, client, supabase, monk
     monkeypatch.setattr("app.core.notifications.notify", lambda *a, **k: True)
 
     res = client.get("/api/unsubscribe?cid=dead-campaign&rid=dead-recipient")
+    assert res.status_code == 200
+    res = client.post(
+        "/api/unsubscribe/confirm",
+        data={"cid": "dead-campaign", "rid": "dead-recipient"},
+    )
     assert res.status_code == 200
 
 
