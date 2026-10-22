@@ -1,4 +1,4 @@
-﻿{% extends "bird/base.html" %}
+{% extends "bird/base.html" %}
 {% block title %}{{ 'Edit' if campaign else 'New' }} Bird SMS campaign &middot; webmailer{% endblock %}
 {% block content %}
 {% set c = campaign or {} %}
@@ -16,18 +16,18 @@
   <fieldset>
     <legend>Campaign</legend>
     <div class="grid-2">
-      <label>Campaign name <input type="text" name="name" required maxlength="255" value="{{ c.get('name') or '' }}"></label>
-      <label>Priority
+      <label>Campaign name <button type="button" class="info-icon" data-info="bird_campaign_name">i</button> <input type="text" name="name" required maxlength="255" value="{{ c.get('name') or '' }}"></label>
+      <label>Priority <button type="button" class="info-icon" data-info="bird_priority">i</button>
         <select name="priority">
           <option value="normal" {% if (c.get('priority') or 'normal') == 'normal' %}selected{% endif %}>Normal</option>
           <option value="high" {% if c.get('priority') == 'high' %}selected{% endif %}>High (blocks other high-priority campaigns)</option>
         </select>
       </label>
-      <label>Sender
+      <label>Sender <button type="button" class="info-icon" data-info="bird_sender">i</button>
         <input type="text" name="from_number" maxlength="15" value="{{ c.get('from_number') or defaults.from_number }}" placeholder="+15551234567 or Acme">
         <small class="muted">Bird accepts an E.164 number or an 11-character alphanumeric sender ID. Must be enabled in Bird.</small>
       </label>
-      <label>Category
+      <label>Category <button type="button" class="info-icon" data-info="bird_category">i</button>
         <select name="category">
           {% for value in ['transactional', 'marketing', 'authentication', 'service'] %}
           <option value="{{ value }}" {% if (c.get('category') or defaults.category) == value %}selected{% endif %}>{{ value }}</option>
@@ -40,7 +40,7 @@
   <fieldset>
     <legend>Message</legend>
     <div class="grid-2">
-      <label>Message mode
+      <label>Message mode <button type="button" class="info-icon" data-info="bird_message_mode">i</button>
         <select name="message_mode" id="bird-message-mode">
           <option value="text" {% if (c.get('message_mode') or 'text') == 'text' %}selected{% endif %}>Free text</option>
           <option value="template" {% if c.get('message_mode') == 'template' %}selected{% endif %}>Bird template</option>
@@ -52,13 +52,14 @@
     </div>
 
     <div id="bird-text-fields">
-      <label>Message body
+      <label>Message body <button type="button" class="info-icon" data-info="bird_message_body">i</button>
         <textarea name="text" id="bird-campaign-text" rows="7" maxlength="1600" placeholder="Hi {{ '{{first_name}}' }}, your order is ready.">{{ c.get('text') or '' }}</textarea>
         <small class="muted">Merge tags: {{ '{{first_name}}' }}, {{ '{{last_name}}' }}, {{ '{{phone}}' }}. Bird caps messages at 12 segments.</small>
       </label>
-      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code" {% if c.get('include_stop_code', defaults.include_stop_code) %}checked{% endif %}> Append a STOP line</span></label>
+      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code" {% if c.get('include_stop_code', defaults.include_stop_code) %}checked{% endif %}> Append a STOP line <button type="button" class="info-icon" data-info="bird_include_stop">i</button></span></label>
       <div class="form-actions">
         <button type="button" class="btn" id="bird-campaign-preview-btn">Preview and segment count</button>
+        <button type="button" class="info-icon" data-info="bird_segments">i</button>
         <span id="bird-campaign-preview-meta" class="muted"></span>
       </div>
       <div id="bird-campaign-preview" class="preview-wrap" hidden><div class="sms-bubble" id="bird-campaign-preview-body"></div></div>
@@ -66,19 +67,19 @@
 
     <div id="bird-template-fields" hidden>
       <div class="grid-2">
-        <label>Template scope
+        <label>Template scope <button type="button" class="info-icon" data-info="bird_template_scope">i</button>
           <select name="template_scope">
             <option value="" {% if not c.get('template_scope') %}selected{% endif %}>Not set</option>
             <option value="system" {% if c.get('template_scope') == 'system' %}selected{% endif %}>System</option>
             <option value="workspace" {% if c.get('template_scope') == 'workspace' %}selected{% endif %}>Workspace</option>
           </select>
         </label>
-        <label>Template slug
+        <label>Template slug <button type="button" class="info-icon" data-info="bird_template_slug">i</button>
           <input type="text" name="template_slug" maxlength="255" value="{{ c.get('template_slug') or '' }}" placeholder="order_ready">
         </label>
-        <label>Language <input type="text" name="template_language" maxlength="16" value="{{ c.get('template_language') or 'en' }}"></label>
-        <label>Template name <input type="text" name="template_name" maxlength="255" value="{{ c.get('template_name') or '' }}"></label>
-        <label>Template category
+        <label>Language <button type="button" class="info-icon" data-info="bird_template_language">i</button> <input type="text" name="template_language" maxlength="16" value="{{ c.get('template_language') or 'en' }}"></label>
+        <label>Template name <button type="button" class="info-icon" data-info="bird_template_name">i</button> <input type="text" name="template_name" maxlength="255" value="{{ c.get('template_name') or '' }}"></label>
+        <label>Template category <button type="button" class="info-icon" data-info="bird_category">i</button>
           <select name="template_category">
             <option value="">Use campaign category</option>
             {% for value in ['transactional', 'marketing', 'authentication', 'service'] %}
@@ -86,7 +87,7 @@
             {% endfor %}
           </select>
         </label>
-        <label>Parameters JSON
+        <label>Parameters JSON <button type="button" class="info-icon" data-info="bird_template_parameters">i</button>
           <textarea name="template_parameters" rows="3" placeholder='{"first_name": "Ada"}'></textarea>
         </label>
       </div>
@@ -95,16 +96,16 @@
   </fieldset>
 
   <fieldset>
-    <legend>Audience</legend>
+    <legend>Audience <button type="button" class="info-icon" data-info="bird_audience">i</button></legend>
     {% if lists %}
-    <p class="muted small">Attach saved Bird SMS lists. Contacts are snapshotted into the campaign so later list edits do not change it.</p>
+    <p class="muted small">Attach saved Bird SMS lists. Contacts are snapshotted into the campaign so later list edits do not change it. <button type="button" class="info-icon" data-info="bird_audience_lists">i</button></p>
     <div class="pill-row">
       {% for l in lists %}
       <label class="checkbox"><input type="checkbox" name="list_ids" value="{{ l.id }}" {% if l.id in campaign_list_ids %}checked{% endif %}> {{ l.name }} <span class="muted">({{ l.member_count }})</span></label>
       {% endfor %}
     </div>
     {% else %}<p class="muted">No Bird SMS lists yet. Add recipients by phone below.</p>{% endif %}
-    <label>Additional phone numbers <span class="muted">(one per line or comma separated)</span>
+    <label>Additional phone numbers <button type="button" class="info-icon" data-info="bird_extra_phones">i</button> <span class="muted">(one per line or comma separated)</span>
       <textarea name="recipient_phones" rows="3" placeholder="+15551234567, +15557654321"></textarea>
     </label>
     {% if campaign %}<p class="muted small">{{ recipient_count }} recipient(s) currently attached. New lists/numbers are added on save.</p>{% endif %}
@@ -113,16 +114,16 @@
   <fieldset>
     <legend>Pacing &amp; schedule</legend>
     <div class="grid-2">
-      <label>Batch size <input type="number" name="batch_size" min="1" max="5000" value="{{ c.get('batch_size') or defaults.batch_size }}"></label>
-      <label>Messages per minute <input type="number" name="send_rate_per_minute" min="1" max="600" value="{{ c.get('send_rate_per_minute') or defaults.send_rate_per_minute }}"></label>
-      <label>Stagger within batch (seconds) <input type="number" name="stagger_seconds" min="0" max="86400" value="{{ c.get('stagger_seconds') if c.get('stagger_seconds') is not none else defaults.stagger_seconds }}"></label>
-      <label>Schedule at <button type="button" class="info-icon" data-info="sms_schedule">i</button> <span class="muted">(optional, UTC)</span>
+      <label>Batch size <button type="button" class="info-icon" data-info="bird_batch_size">i</button> <input type="number" name="batch_size" min="1" max="5000" value="{{ c.get('batch_size') or defaults.batch_size }}"></label>
+      <label>Messages per minute <button type="button" class="info-icon" data-info="bird_rate">i</button> <input type="number" name="send_rate_per_minute" min="1" max="600" value="{{ c.get('send_rate_per_minute') or defaults.send_rate_per_minute }}"></label>
+      <label>Stagger within batch (seconds) <button type="button" class="info-icon" data-info="bird_stagger">i</button> <input type="number" name="stagger_seconds" min="0" max="86400" value="{{ c.get('stagger_seconds') if c.get('stagger_seconds') is not none else defaults.stagger_seconds }}"></label>
+      <label>Schedule at <button type="button" class="info-icon" data-info="bird_schedule">i</button> <span class="muted">(optional, UTC)</span>
         <input type="datetime-local" name="schedule_at" value="{{ (c.get('schedule_at') or '')[:16] }}">
       </label>
       <label>Quiet window <button type="button" class="info-icon" data-info="bird_quiet_window">i</button> start <input type="time" name="window_start" value="{{ (c.get('window_start') or defaults.window_start or '')[:5] }}"></label>
       <label>Quiet window <button type="button" class="info-icon" data-info="bird_quiet_window">i</button> end <input type="time" name="window_end" value="{{ (c.get('window_end') or defaults.window_end or '')[:5] }}"></label>
-      <label>Window timezone <input type="text" name="window_timezone" maxlength="64" value="{{ c.get('window_timezone') or defaults.window_timezone }}" placeholder="Europe/London"></label>
-      <label>Soft-bounce policy
+      <label>Window timezone <button type="button" class="info-icon" data-info="bird_window_timezone">i</button> <input type="text" name="window_timezone" maxlength="64" value="{{ c.get('window_timezone') or defaults.window_timezone }}" placeholder="Europe/London"></label>
+      <label>Soft-bounce policy <button type="button" class="info-icon" data-info="bird_soft_bounce">i</button>
         {% set sbp = c.get('soft_bounce_policy') or 'threshold' %}
         <select name="soft_bounce_policy">
           <option value="threshold" {% if sbp == 'threshold' %}selected{% endif %}>Suppress after threshold</option>
@@ -130,7 +131,7 @@
           <option value="never" {% if sbp == 'never' %}selected{% endif %}>Never auto-suppress</option>
         </select>
       </label>
-      <label>Soft-bounce threshold <input type="number" name="soft_bounce_threshold" min="1" max="10" value="{{ c.get('soft_bounce_threshold') or 3 }}"></label>
+      <label>Soft-bounce threshold <button type="button" class="info-icon" data-info="bird_soft_bounce_threshold">i</button> <input type="number" name="soft_bounce_threshold" min="1" max="10" value="{{ c.get('soft_bounce_threshold') or 3 }}"></label>
     </div>
   </fieldset>
 

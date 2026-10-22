@@ -1,4 +1,4 @@
-﻿"""Global mailer settings endpoints (sender, thresholds, pacing, safety)."""
+"""Global mailer settings endpoints (sender, thresholds, pacing, safety)."""
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
@@ -70,13 +70,15 @@ def get_settings():
 
 @bp.patch("")
 def update_settings():
-    """PATCH /api/settings â€” update global defaults (partial)."""
+    """PATCH /api/settings — update global defaults (partial)."""
     try:
         payload = SettingsUpdate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
         return jsonify({"error": exc.errors(include_url=False)}), 422
 
-    data = payload.model_dump(mode="json", exclude_none=True)
+    # ``exclude_unset`` (not ``exclude_none``) so an explicit JSON null clears a
+    # field (e.g. reply_to_email) while an omitted field stays untouched.
+    data = payload.model_dump(mode="json", exclude_unset=True)
     if not data:
         return jsonify({"error": "no fields to update"}), 400
 
@@ -122,13 +124,13 @@ def update_settings():
 
 @bp.get("/defaults")
 def get_fallback_defaults():
-    """GET /api/settings/defaults â€” config-derived defaults (for help text)."""
+    """GET /api/settings/defaults — config-derived defaults (for help text)."""
     return jsonify({"defaults": fallback_settings()}), 200
 
 
 @bp.get("/plans")
 def list_plans():
-    """GET /api/settings/plans â€” every plan's recommended values + limits."""
+    """GET /api/settings/plans — every plan's recommended values + limits."""
     from app.config import BREVO_PLANS
 
     return jsonify({"plans": {key: plan_limits(key) for key in BREVO_PLANS}}), 200
@@ -136,7 +138,7 @@ def list_plans():
 
 @bp.post("/test-email")
 def send_test_email():
-    """POST /api/settings/test-email  {to?} â€” send a diagnostic email.
+    """POST /api/settings/test-email  {to?} — send a diagnostic email.
 
     Uses the current sender identity and a minimal body so an operator can
     confirm the pipeline and inspect headers (DKIM/DMARC) in their inbox.

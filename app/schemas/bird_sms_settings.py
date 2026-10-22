@@ -1,4 +1,4 @@
-﻿"""Bird SMS settings schema."""
+"""Bird SMS settings schema."""
 from __future__ import annotations
 
 from datetime import date, time

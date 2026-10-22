@@ -8,7 +8,8 @@ import pandas as pd
 from flask import Blueprint, jsonify, request
 from pydantic import ValidationError
 
-from app.core.supabase_client import get_supabase
+from app.core.supabase_client import DELIVERY_FILTERS, get_supabase
+from app.extensions import limiter
 from app.schemas.contacts import (
     ContactBulkDelete,
     ContactCreate,
@@ -76,6 +77,11 @@ def list_contacts():
 
     status = request.args.get("status")
     delivery = request.args.get("delivery")
+    if delivery and delivery not in DELIVERY_FILTERS:
+        return jsonify({
+            "error": f"unknown delivery filter: {delivery}",
+            "allowed": sorted(DELIVERY_FILTERS),
+        }), 400
     include_deleted = request.args.get("deleted") in ("1", "true", "yes")
     data = get_supabase().list_contacts(
         page=page, limit=limit, status=status,
@@ -98,6 +104,7 @@ def create_contact():
 
 
 @bp.post("/import/preview")
+@limiter.limit("30 per minute")
 def preview_import():
     """POST /api/contacts/import/preview  (multipart form-data, field: file)
 
@@ -134,6 +141,7 @@ def preview_import():
 
 
 @bp.post("/import")
+@limiter.limit("10 per minute")
 def import_contacts():
     """POST /api/contacts/import  (multipart form-data)
 
@@ -236,6 +244,7 @@ def cleanup_names():
 
 
 @bp.post("/import/commit")
+@limiter.limit("10 per minute")
 def commit_import():
     """POST /api/contacts/import/commit  {rows, list_id?, list_name?}
 

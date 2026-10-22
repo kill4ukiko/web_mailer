@@ -1,4 +1,4 @@
-﻿"""Effective Bird SMS settings and runtime caps.
+"""Effective Bird SMS settings and runtime caps.
 
 Bird is prepaid pay-as-you-go, so there is no provider "plan" to clamp against.
 The DB row overrides the .env bootstrap values; secrets never leave the server.

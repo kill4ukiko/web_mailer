@@ -1,4 +1,4 @@
-﻿"""Global SMS settings endpoints (sender, plan, pacing, credits)."""
+"""Global SMS settings endpoints (sender, plan, pacing, credits)."""
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
@@ -75,7 +75,7 @@ def get_settings():
 
 @bp.patch("/settings")
 def update_settings():
-    """PATCH /api/sms/settings â€” update SMS defaults (partial)."""
+    """PATCH /api/sms/settings — update SMS defaults (partial)."""
     try:
         payload = SmsSettingsUpdate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -124,13 +124,13 @@ def update_settings():
 
 @bp.get("/settings/defaults")
 def get_fallback_defaults():
-    """GET /api/sms/settings/defaults â€” config-derived SMS defaults."""
+    """GET /api/sms/settings/defaults — config-derived SMS defaults."""
     return jsonify({"defaults": fallback_sms_settings()}), 200
 
 
 @bp.get("/settings/plans")
 def list_plans():
-    """GET /api/sms/settings/plans â€” every SMS plan's recommended + limits."""
+    """GET /api/sms/settings/plans — every SMS plan's recommended + limits."""
     from app.config import SMS_PLANS
 
     return jsonify({"plans": {key: sms_plan_limits(key) for key in SMS_PLANS}}), 200
@@ -138,7 +138,7 @@ def list_plans():
 
 @bp.get("/account")
 def get_account():
-    """GET /api/sms/account â€” live Brevo SMS credit balance (cached).
+    """GET /api/sms/account — live Brevo SMS credit balance (cached).
 
     ``?refresh=1`` bypasses the cache.
     """

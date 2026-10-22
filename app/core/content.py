@@ -1,4 +1,4 @@
-﻿"""Outbound email content processing.
+"""Outbound email content processing.
 
 Prepares each recipient's HTML/plain-text just-in-time before delivery:
   1. wrap bare HTML fragments in a minimal email shell
@@ -46,27 +46,63 @@ _FOOTER_HTML = (
 _FOOTER_TEXT = "\n\n---\nUnsubscribe: {{unsubscribe}}"
 
 
+def _settings_value(name: str) -> str:
+    from app.config import get_settings
+
+    if has_app_context():
+        settings_obj = current_app.config.get("SETTINGS")
+        value = getattr(settings_obj, name, None)
+        if value:
+            return str(value)
+    return str(getattr(get_settings(), name, "") or "")
+
+
 def _unsubscribe_secret() -> str:
+    """Primary secret used to sign new unsubscribe links."""
+    dedicated = _settings_value("unsubscribe_token_secret")
+    if dedicated:
+        return dedicated
     if has_app_context():
         value = current_app.config.get("SECRET_KEY")
         if value:
             return str(value)
-    from app.config import get_settings
-
-    return str(get_settings().secret_key or "")
+    return _settings_value("secret_key")
 
 
-def build_unsubscribe_token(campaign_id: str, recipient_id: str) -> str:
+def _unsubscribe_secrets() -> list[str]:
+    """Primary + legacy secrets, for verifying links signed before a rotation."""
+    secrets = [_unsubscribe_secret()]
+    legacy = _settings_value("unsubscribe_legacy_secrets")
+    secrets.extend(part.strip() for part in legacy.replace(";", ",").split(","))
+    return [s for s in dict.fromkeys(secrets) if s]
+
+
+def _token_for(secret: str, campaign_id: str, recipient_id: str) -> str:
     message = f"{campaign_id}:{recipient_id}".encode()
-    digest = hmac.new(_unsubscribe_secret().encode(), message, hashlib.sha256).hexdigest()
+    digest = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
     return digest[:32]
 
 
+def build_unsubscribe_token(campaign_id: str, recipient_id: str) -> str:
+    return _token_for(_unsubscribe_secret(), str(campaign_id), str(recipient_id))
+
+
 def verify_unsubscribe_token(campaign_id: str, recipient_id: str, token: str | None) -> bool:
+    """Constant-time check; an empty token is always rejected.
+
+    Older deployments accepted unsigned links, which let anyone who knew (or
+    guessed) a recipient UUID opt that person out. Only signed links are
+    honoured now; links in already-sent mail keep working because the previous
+    secret can be listed in ``UNSUBSCRIBE_LEGACY_SECRETS``.
+    """
     if not token:
-        return True  # legacy links created before signed unsubscribe URLs
-    expected = build_unsubscribe_token(campaign_id, recipient_id)
-    return hmac.compare_digest(expected, str(token))
+        return False
+    supplied = str(token)
+    for secret in _unsubscribe_secrets():
+        expected = _token_for(secret, str(campaign_id), str(recipient_id))
+        if hmac.compare_digest(expected, supplied):
+            return True
+    return False
 
 
 def build_unsubscribe_url(base_url: str, campaign_id: str, recipient_id: str) -> str:
@@ -83,12 +119,37 @@ def build_open_pixel_url(base_url: str, campaign_id: str, recipient_id: str) -> 
     return f"{base}{_TRACK_PATH}{quote(str(campaign_id))}/{quote(str(recipient_id))}/open"
 
 
+def build_click_signature(campaign_id: str, recipient_id: str, target_url: str) -> str:
+    """Sign a click target so the redirector cannot be abused as an open redirect."""
+    message = f"click:{campaign_id}:{recipient_id}:{target_url}".encode()
+    digest = hmac.new(_unsubscribe_secret().encode(), message, hashlib.sha256).hexdigest()
+    return digest[:32]
+
+
+def verify_click_signature(
+    campaign_id: str, recipient_id: str, target_url: str, signature: str | None
+) -> bool:
+    if not signature:
+        return False
+    supplied = str(signature)
+    for secret in _unsubscribe_secrets():
+        message = f"click:{campaign_id}:{recipient_id}:{target_url}".encode()
+        expected = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()[:32]
+        if hmac.compare_digest(expected, supplied):
+            return True
+    return False
+
+
 def build_click_url(
     base_url: str, campaign_id: str, recipient_id: str, target_url: str
 ) -> str:
     base = base_url.rstrip("/")
     encoded = quote(target_url, safe="")
-    return f"{base}{_TRACK_PATH}{quote(str(campaign_id))}/{quote(str(recipient_id))}/click?target_url={encoded}"
+    signature = build_click_signature(str(campaign_id), str(recipient_id), target_url)
+    return (
+        f"{base}{_TRACK_PATH}{quote(str(campaign_id))}/{quote(str(recipient_id))}"
+        f"/click?target_url={encoded}&s={signature}"
+    )
 
 
 def ensure_email_shell(html: str) -> str:
@@ -123,8 +184,18 @@ def append_unsubscribe_footer(html: str, text: str | None) -> tuple[str, str | N
     return html, text
 
 
-def substitute_merge_tags(text: str, context: dict[str, Any], unsubscribe_url: str) -> str:
-    """Replace {{first_name}}/{{last_name}}/{{email}}/{{unsubscribe}} and custom tags."""
+def substitute_merge_tags(
+    text: str,
+    context: dict[str, Any],
+    unsubscribe_url: str,
+    *,
+    escape_html: bool = False,
+) -> str:
+    """Replace {{first_name}}/{{last_name}}/{{email}}/{{unsubscribe}} and custom tags.
+
+    ``escape_html=True`` must be used for HTML bodies: contact fields are
+    attacker-controlled data and must not be injected as markup.
+    """
     if not text:
         return text
 
@@ -149,7 +220,8 @@ def substitute_merge_tags(text: str, context: dict[str, Any], unsubscribe_url: s
         lowered = name.lower()
         if lowered in ("unsubscribe", "unsubscribe_url"):
             return unsubscribe_url
-        return _lookup(name)
+        value = _lookup(name)
+        return html_lib.escape(value) if escape_html else value
 
     return _MERGE_RE.sub(_replace, text)
 
@@ -214,7 +286,9 @@ def render_email(
     processed_html = ensure_email_shell(html)
     processed_html, plain_text = append_unsubscribe_footer(processed_html, plain_text)
 
-    processed_html = substitute_merge_tags(processed_html, context, unsubscribe_url)
+    processed_html = substitute_merge_tags(
+        processed_html, context, unsubscribe_url, escape_html=True
+    )
     processed_html = rewrite_links(processed_html, campaign_id, recipient_id, base_url)
     processed_html = inject_open_pixel(processed_html, campaign_id, recipient_id, base_url)
 
@@ -250,7 +324,9 @@ def render_preview(
 
     processed_html = ensure_email_shell(html or "")
     processed_html, plain_text = append_unsubscribe_footer(processed_html, plain_text)
-    processed_html = substitute_merge_tags(processed_html, merged_context, unsubscribe_url)
+    processed_html = substitute_merge_tags(
+        processed_html, merged_context, unsubscribe_url, escape_html=True
+    )
 
     processed_text = plain_text
     if processed_text:

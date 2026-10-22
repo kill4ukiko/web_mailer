@@ -111,17 +111,25 @@ def sms_credit_snapshot(
     client: Any = None,
     *,
     force: bool = False,
+    allow_fetch: bool = True,
     threshold: int = SMS_LOW_CREDIT_THRESHOLD,
 ) -> dict[str, Any]:
     """Return ``{available, credits, credits_type, low, threshold, fetched_at}``.
 
-    Uses the cache unless ``force`` is set. ``client`` defaults to the shared
-    :class:`app.core.sms.SmsClient`; inject a fake in tests.
+    Uses the cache unless ``force`` is set. With ``allow_fetch=False`` a cache
+    miss returns an ``available: false`` snapshot marked ``lazy`` instead of
+    calling Brevo — page renders stay fast and the UI refreshes in the
+    background. ``client`` defaults to the shared :class:`app.core.sms.SmsClient`;
+    inject a fake in tests.
     """
     if not force:
         cached = _cached()
         if cached is not None:
             return cached
+        if not allow_fetch:
+            snapshot = _snapshot_from(None, threshold)
+            snapshot["lazy"] = True
+            return snapshot
 
     if client is None:
         from app.core.sms import get_sms_client

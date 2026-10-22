@@ -1,4 +1,4 @@
-﻿"""Bird SMS campaign/template schemas."""
+"""Bird SMS campaign/template schemas."""
 from __future__ import annotations
 
 from datetime import datetime, time

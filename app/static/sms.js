@@ -995,15 +995,15 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    initCredits();
+    [initCredits, initSeeMore, initSmsImport, initContactsTable, initLists,
+     initTemplates, initCampaignForm, initCampaignDetail, initSettings]
+      .forEach((init) => {
+        try {
+          init();
+        } catch (err) {
+          console.error("sms init failed:", init.name, err);
+        }
+      });
     loadCredits(false);
-    initSeeMore();
-    initSmsImport();
-    initContactsTable();
-    initLists();
-    initTemplates();
-    initCampaignForm();
-    initCampaignDetail();
-    initSettings();
   });
 })();

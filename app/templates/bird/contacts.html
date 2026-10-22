@@ -1,4 +1,4 @@
-﻿{% extends "bird/base.html" %}
+{% extends "bird/base.html" %}
 {% block title %}Bird SMS contacts &middot; webmailer{% endblock %}
 {% block content %}
 <div class="section-head">
@@ -8,8 +8,8 @@
 <p class="muted small">Phone numbers are stored in E.164 format and are completely separate from email and Brevo SMS contacts.</p>
 
 <section id="bird-import-panel" class="form" hidden>
-  <h2>Import contacts</h2>
-  <label>CSV or Excel file
+  <h2>Import contacts <button type="button" class="info-icon" data-info="bird_import">i</button></h2>
+  <label>CSV or Excel file <button type="button" class="info-icon" data-info="bird_import_file">i</button>
     <input type="file" id="bird-import-file" accept=".csv,.xls,.xlsx">
   </label>
   <div class="form-actions">
@@ -17,12 +17,12 @@
     <span id="bird-import-status" class="muted"></span>
   </div>
   <div id="bird-mapping-section" hidden>
-    <h3>Map columns</h3>
+    <h3>Map columns <button type="button" class="info-icon" data-info="bird_column_mapping">i</button></h3>
     <div class="grid-2">
-      <label>Phone <span class="req">(required)</span><select id="bird-map-phone"></select></label>
-      <label>First name <select id="bird-map-first_name"></select></label>
-      <label>Last name <select id="bird-map-last_name"></select></label>
-      <label>Country <select id="bird-map-country"></select></label>
+      <label>Phone <button type="button" class="info-icon" data-info="bird_phone">i</button> <span class="req">(required)</span><select id="bird-map-phone"></select></label>
+      <label>First name <button type="button" class="info-icon" data-info="bird_first_name">i</button> <select id="bird-map-first_name"></select></label>
+      <label>Last name <button type="button" class="info-icon" data-info="bird_last_name">i</button> <select id="bird-map-last_name"></select></label>
+      <label>Country <button type="button" class="info-icon" data-info="bird_country">i</button> <select id="bird-map-country"></select></label>
     </div>
     <p class="muted small" id="bird-preview-count"></p>
     <div class="form-actions">
@@ -33,9 +33,9 @@
   <fieldset>
     <legend>Add a single contact</legend>
     <div class="grid-2">
-      <label>Phone <input type="tel" id="bird-new-phone" placeholder="+15551234567"></label>
-      <label>First name <input type="text" id="bird-new-first" maxlength="255"></label>
-      <label>Last name <input type="text" id="bird-new-last" maxlength="255"></label>
+      <label>Phone <button type="button" class="info-icon" data-info="bird_phone">i</button> <input type="tel" id="bird-new-phone" placeholder="+15551234567"></label>
+      <label>First name <button type="button" class="info-icon" data-info="bird_first_name">i</button> <input type="text" id="bird-new-first" maxlength="255"></label>
+      <label>Last name <button type="button" class="info-icon" data-info="bird_last_name">i</button> <input type="text" id="bird-new-last" maxlength="255"></label>
     </div>
     <div class="form-actions">
       <button type="button" class="btn btn-primary" id="bird-add-contact-btn">Add contact</button>
@@ -44,15 +44,15 @@
   </fieldset>
 </section>
 
-<h2>Lists</h2>
+<h2>Lists <button type="button" class="info-icon" data-info="bird_contact_lists">i</button></h2>
 <form id="bird-list-create-form" class="form">
   <fieldset>
     <legend>New Bird SMS list</legend>
     <div class="grid-2">
-      <label>List name <input type="text" name="name" required maxlength="255" placeholder="October leads"></label>
-      <label>Description <input type="text" name="description" maxlength="1000"></label>
+      <label>List name <button type="button" class="info-icon" data-info="bird_list_name">i</button> <input type="text" name="name" required maxlength="255" placeholder="October leads"></label>
+      <label>Description <button type="button" class="info-icon" data-info="bird_list_description">i</button> <input type="text" name="description" maxlength="1000"></label>
     </div>
-    <label>Add by phone <textarea name="phones" rows="2" placeholder="+15551234567, +15557654321"></textarea></label>
+    <label>Add by phone <button type="button" class="info-icon" data-info="bird_list_phones">i</button> <textarea name="phones" rows="2" placeholder="+15551234567, +15557654321"></textarea></label>
     <div class="form-actions"><button type="submit" class="btn btn-primary">Create list</button><span id="bird-list-status" class="muted"></span></div>
   </fieldset>
 </form>
@@ -69,7 +69,7 @@
   {% if not lists %}<p class="muted" id="bird-no-lists">No Bird SMS lists yet.</p>{% endif %}
 </div>
 
-<h2>All Bird SMS contacts</h2>
+<h2>All Bird SMS contacts <button type="button" class="info-icon" data-info="bird_contact_status">i</button> <button type="button" class="info-icon" data-info="bird_restore">i</button></h2>
 <div class="filter-row">
   <a class="pill{{ ' pill-active' if not status and not show_deleted else '' }}" href="{{ url_for('web.bird_sms_contacts_page') }}">All</a>
   <a class="pill{{ ' pill-active' if status == 'active' else '' }}" href="{{ url_for('web.bird_sms_contacts_page', status='active') }}">Active</a>
@@ -82,7 +82,7 @@
 
 {% if contacts %}
 <table class="table" id="bird-contacts-table">
-  <thead><tr><th>Phone</th><th>First name</th><th>Last name</th><th>Status</th><th>Delivery</th><th></th></tr></thead>
+  <thead><tr><th>Phone <button type="button" class="info-icon" data-info="bird_phone">i</button></th><th>First name <button type="button" class="info-icon" data-info="bird_first_name">i</button></th><th>Last name <button type="button" class="info-icon" data-info="bird_last_name">i</button></th><th>Status <button type="button" class="info-icon" data-info="bird_contact_status">i</button></th><th>Delivery <button type="button" class="info-icon" data-info="bird_delivery_status">i</button></th><th></th></tr></thead>
   <tbody>
     {% for c in contacts %}
     <tr data-bird-contact-id="{{ c.id }}">

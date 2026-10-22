@@ -1,4 +1,4 @@
-﻿{% extends "sms/base.html" %}
+{% extends "sms/base.html" %}
 {% block title %}{{ campaign.name }} &middot; B SMS &middot; webmailer{% endblock %}
 {% block content %}
 {% set stats = campaign.stats or {} %}
@@ -144,8 +144,8 @@
     <tbody>
       {% for r in recipients %}
       <tr>
-        <td>{{ r.contact.get('phone') or 'â€”' }}</td>
-        <td>{{ ((r.contact.get('first_name') or '') ~ ' ' ~ (r.contact.get('last_name') or '')).strip() or 'â€”' }}</td>
+        <td>{{ r.contact.get('phone') or '—' }}</td>
+        <td>{{ ((r.contact.get('first_name') or '') ~ ' ' ~ (r.contact.get('last_name') or '')).strip() or '—' }}</td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status.replace('_', ' ') }}</span></td>
         <td class="muted">{{ r.sent_at[:19].replace('T', ' ') if r.sent_at else '' }}</td>
         <td class="muted">{{ r.delivered_at[:19].replace('T', ' ') if r.delivered_at else '' }}</td>

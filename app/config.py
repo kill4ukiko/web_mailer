@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me"
     debug: bool = True
     base_url: str = "http://localhost:5000"
+    # Trust Cloudflare's CF-Connecting-IP header for rate limits and recorded
+    # event IPs. Enable only when the origin is reachable exclusively through
+    # Cloudflare/cloudflared; otherwise clients can spoof the header.
+    trust_cloudflare_client_ip: bool = False
 
     # Supabase / PostgreSQL
     supabase_url: str = "https://your-project-ref.supabase.co"
@@ -30,8 +34,9 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     database_url: str = ""
 
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    # Redis. Each concern gets its own database so a FLUSHDB (or a key naming
+    # collision) can never wipe queued Celery tasks or rate-limit counters.
+    redis_url: str = "redis://localhost:6379/3"
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
     ratelimit_storage_uri: str = "redis://localhost:6379/2"
@@ -40,6 +45,14 @@ class Settings(BaseSettings):
     brevo_api_key: str = ""
     brevo_api_url: str = "https://api.brevo.com/v3"
     brevo_webhook_secret: str = ""
+
+    # Unsubscribe-link signing. Keep this separate from SECRET_KEY so rotating
+    # the session key never invalidates unsubscribe links in already-sent mail.
+    # When unset the app falls back to SECRET_KEY (single-secret installs).
+    # ``unsubscribe_legacy_secrets`` (comma-separated) lets old links signed
+    # with a previous secret keep verifying after a rotation.
+    unsubscribe_token_secret: str = ""
+    unsubscribe_legacy_secrets: str = ""
 
     # Telegram (per-section overrides live in the DB; these are the fallback)
     telegram_bot_token: str = ""
@@ -98,7 +111,7 @@ class Settings(BaseSettings):
     auth_allowed_emails: str = ""
 
     # Sending engine transport. "celery" uses the worker + beat schedule;
-    # "cron" is for hosts without Redis (e.g. cPanel) and is driven by
+    # "cron" is for hosts without Redis and is driven by
     # ``python -m app.cron tick`` from a system cron job.
     send_mode: str = "celery"
 

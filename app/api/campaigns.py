@@ -16,6 +16,7 @@ from app.schemas.campaigns import (
     CampaignReuse,
     CampaignUpdate,
 )
+from app.extensions import limiter
 
 bp = Blueprint("campaigns", __name__, url_prefix="/api/campaigns")
 
@@ -24,7 +25,7 @@ _PRIORITY_BLOCKING = ("sending", "scheduled", "paused", "held")
 
 ACTION_MAP = {
     "start": {"status": "sending", "started_at": "now()", "finished_at": None,
-              "circuit_state": "ok", "next_send_at": None},
+              "next_send_at": None},
     "resume": {"status": "sending", "finished_at": None,
                "circuit_state": "ok", "next_send_at": None},
     "pause": {"status": "paused"},
@@ -277,6 +278,7 @@ def delete_campaign(campaign_id: str):
 
 
 @bp.post("/<campaign_id>/action")
+@limiter.limit("60 per minute")
 def campaign_action(campaign_id: str):
     """POST /api/campaigns/<id>/action  {action: start|pause|resume|cancel|schedule}"""
     try:
@@ -319,35 +321,39 @@ def campaign_action(campaign_id: str):
         update["status"] = "sending"
         update["started_at"] = "now()"
 
-    supabase.update_campaign(campaign_id, update)
-
+    # Safety checks must run *before* the campaign is flipped to "sending";
+    # otherwise a refused start leaves a campaign that looks live but never sends.
     if action in ("start", "resume"):
-        # Refuse to start while the global kill switch is engaged.
         if effective_settings(supabase).get("sending_paused"):
             return jsonify({
                 "error": "all sending is paused (kill switch). Re-enable sending in Settings first.",
                 "action": action,
             }), 409
-        # Re-read the freshly updated row so circuit changes take effect.
-        refreshed = supabase.get_campaign(campaign_id) or campaign
-        if refreshed.get("circuit_state", "ok") in ("ok", "warning"):
-            _dispatch(supabase, campaign_id)
-            try:
-                from app.core.notifications import notify_campaign
-
-                notify_campaign(refreshed, "started")
-            except Exception:  # noqa: BLE001
-                pass
-        else:
+        # ``resume`` is the operator's explicit override, so it clears the
+        # circuit (see ACTION_MAP); ``start`` must respect the current state.
+        circuit = update.get("circuit_state", campaign.get("circuit_state", "ok"))
+        if circuit not in ("ok", "warning"):
             return jsonify({
-                "warning": "campaign not dispatched; circuit breaker is not OK",
+                "warning": "campaign not started; circuit breaker is not OK",
                 "action": action,
             }), 409
+
+    supabase.update_campaign(campaign_id, update)
+
+    if action in ("start", "resume"):
+        _dispatch(supabase, campaign_id)
+        try:
+            from app.core.notifications import notify_campaign
+
+            notify_campaign(supabase.get_campaign(campaign_id) or campaign, "started")
+        except Exception:  # noqa: BLE001
+            pass
 
     return jsonify({"id": campaign_id, "action": action, "status": update["status"]}), 200
 
 
 @bp.post("/<campaign_id>/send-test")
+@limiter.limit("10 per minute")
 def send_test(campaign_id: str):
     """POST /api/campaigns/<id>/send-test  {to} — send one real test email.
 
@@ -380,11 +386,9 @@ def send_test(campaign_id: str):
         base_url,
         context=context,
     )
-    headers = {
-        "List-Unsubscribe": f"<{base_url.rstrip('/')}/api/unsubscribe?cid={campaign_id}&rid=test>",
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        "X-Campaign-Test": "1",
-    }
+    # Test sends are not subscriptions: advertising one-click unsubscribe here
+    # would make mail clients offer an opt-out that cannot apply.
+    headers = {"X-Campaign-Test": "1"}
     try:
         message_id = BrevoClient().send_email(
             to_email=to_email,
@@ -738,7 +742,7 @@ def resend_campaign(campaign_id: str):
         "started_at": "now()",
         "finished_at": None,
         "circuit_state": "ok",
-        "stats": {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0},
+        "stats": {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0, "unsubscribes": 0},
     })
 
     refreshed = supabase.get_campaign(campaign_id) or campaign

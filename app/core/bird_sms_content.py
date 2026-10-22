@@ -1,4 +1,4 @@
-﻿"""Bird SMS content helpers (segment estimate + 12-segment provider cap)."""
+"""Bird SMS content helpers (segment estimate + 12-segment provider cap)."""
 from __future__ import annotations
 
 from app.config import BIRD_MAX_SEGMENTS

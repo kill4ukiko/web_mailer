@@ -1,4 +1,4 @@
-﻿"""Bird SMS batch delivery tasks (Celery + Redis-less cron)."""
+"""Bird SMS batch delivery tasks (Celery + Redis-less cron)."""
 from __future__ import annotations
 
 import logging

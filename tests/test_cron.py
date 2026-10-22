@@ -1,7 +1,18 @@
 """Tests for the cron send driver (app.cron)."""
 from __future__ import annotations
 
+import pytest
+
 from app.core.brevo import SendResult
+
+
+@pytest.fixture(autouse=True)
+def _cron_send_mode(app, monkeypatch):
+    """The tick guard refuses to run outside SEND_MODE=cron."""
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "send_mode", "cron")
+    yield
 
 
 def _sending_campaign(supabase, n=2):
@@ -91,6 +102,33 @@ def test_cron_tick_promotes_due_scheduled(supabase, monkeypatch):
 
     result = cron.tick(budget_seconds=15.0)
     assert campaign["id"] in result["dispatched"]
+
+
+def test_tick_refuses_to_run_outside_cron_mode(app, monkeypatch):
+    from app import cron
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "send_mode", "celery")
+    assert cron.tick(budget_seconds=1.0)["skipped"] == "send_mode is not cron"
+
+
+def test_tick_skips_when_another_tick_holds_the_lock(tmp_path, monkeypatch):
+    from app import cron
+
+    monkeypatch.setenv("CRON_STATE_DIR", str(tmp_path))
+    (tmp_path / "webmailer-cron.lock").write_text("1234")
+
+    assert cron.tick(budget_seconds=1.0)["skipped"] == "another cron tick is still running"
+
+
+def test_tick_releases_lock_after_running(tmp_path, monkeypatch):
+    from app import cron
+
+    monkeypatch.setenv("CRON_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(cron, "_run_tick", lambda budget: {"ok": True})
+
+    assert cron.tick(budget_seconds=1.0) == {"ok": True}
+    assert not (tmp_path / "webmailer-cron.lock").exists()
 
 
 def test_bootstrap_seeds_settings_when_missing(supabase, monkeypatch):

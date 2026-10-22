@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const csrf = document.querySelector('meta[name="csrf-token"]');
@@ -514,9 +514,21 @@
     });
   }
 
-  initContacts();
-  initTemplates();
-  initSettings();
-  initCampaignForm();
-  initCampaignDetail();
+  function boot() {
+    // Isolate each initialiser so one missing element cannot disable the rest.
+    [initContacts, initTemplates, initSettings, initCampaignForm, initCampaignDetail]
+      .forEach(function (init) {
+        try {
+          init();
+        } catch (err) {
+          console.error("bird_sms init failed:", init.name, err);
+        }
+      });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 })();

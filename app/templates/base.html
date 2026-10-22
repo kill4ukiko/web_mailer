@@ -1,13 +1,18 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="color-scheme" content="dark">
   <title>{% block title %}webmailer{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    html { color-scheme: dark; background: #0f1220; }
+    body { margin: 0; background: #0f1220; color: #e8eaf2;
+           font: 15px/1.5 "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .topbar { background: #171a2b; border-bottom: 1px solid #2a2f47; }
+  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_version }}">
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -51,7 +56,7 @@
     </div>
   </div>
 
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ asset_version }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -21,6 +21,7 @@ from flask import (
 
 from app.config import get_settings
 from app.core.supabase_client import SupabaseClientError, verify_supabase_token
+from app.extensions import limiter
 
 bp = Blueprint("auth", __name__)
 
@@ -65,8 +66,19 @@ def login_required(view):
 
 
 def _safe_next(target: str | None) -> str:
-    """Only allow same-site relative redirects (no open redirect)."""
+    """Only allow same-site relative redirects (no open redirect).
+
+    Browsers normalise backslashes to slashes, so ``/\\evil.com`` is treated
+    like ``//evil.com``; reject both forms (and any control characters).
+    """
     if not target or not target.startswith("/") or target.startswith("//"):
+        return "/"
+    if "\\" in target or any(ord(ch) < 32 for ch in target):
+        return "/"
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc:
         return "/"
     return target
 
@@ -106,6 +118,7 @@ def auth_callback():
 # API
 # --------------------------------------------------------------------------- #
 @bp.post("/api/auth/session")
+@limiter.limit("20 per minute")
 def create_session():
     """POST /api/auth/session — exchange a Supabase access token for a session."""
     payload = request.get_json(silent=True) or {}

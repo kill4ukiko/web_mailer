@@ -142,19 +142,85 @@ def test_preflight_reports_risky_content(client):
     assert body["verdict"] in ("ok", "warning", "risky")
 
 
+def _unsub_target(supabase):
+    campaign = _blank_campaign(supabase)
+    supabase.add_recipients(campaign["id"], [{"email": "u@example.com"}])
+    recipient = supabase.recipients[-1]
+    recipient["status"] = "sent"
+    from app.core.content import build_unsubscribe_token
+
+    token = build_unsubscribe_token(campaign["id"], recipient["id"])
+    return campaign["id"], recipient["id"], token
+
+
 def test_open_tracking_pixel(client, supabase):
-    resp = client.get("/api/track/camp1/r1/open")
+    campaign = _blank_campaign(supabase)
+    supabase.add_recipients(campaign["id"], [{"email": "open@example.com"}])
+    recipient = supabase.recipients[-1]
+    recipient["status"] = "sent"
+
+    resp = client.get(f"/api/track/{campaign['id']}/{recipient['id']}/open")
     assert resp.status_code == 200
     assert resp.mimetype == "image/gif"
     assert resp.data[:6] == b"GIF89a"
     assert any(e["event_type"] == "opened" for e in supabase.events)
 
 
+def test_open_tracking_pixel_ignores_unknown_recipient(client, supabase):
+    campaign = _blank_campaign(supabase)
+    resp = client.get(f"/api/track/{campaign['id']}/r-unknown/open")
+    assert resp.status_code == 200
+    assert resp.data[:6] == b"GIF89a"
+    assert not any(e["event_type"] == "opened" for e in supabase.events)
+
+
 def test_one_click_unsubscribe(client, supabase):
-    community = f"cid=camp1&rid=r1"
+    camp, rid, token = _unsub_target(supabase)
     resp = client.post(
-        f"/api/unsubscribe?{community}",
+        f"/api/unsubscribe?cid={camp}&rid={rid}&t={token}",
         data="List-Unsubscribe=One-Click",
+        content_type="text/plain",
+    )
+    assert resp.status_code == 200
+    assert any(e["event_type"] == "unsubscribe" for e in supabase.events)
+
+
+def test_one_click_unsubscribe_rejects_unsigned_link(client, supabase):
+    camp, rid, _token = _unsub_target(supabase)
+    resp = client.post(
+        f"/api/unsubscribe?cid={camp}&rid={rid}",
+        data="List-Unsubscribe=One-Click",
+        content_type="text/plain",
+    )
+    assert resp.status_code == 400
+    assert not any(e["event_type"] == "unsubscribe" for e in supabase.events)
+
+
+def test_one_click_unsubscribe_rejects_bad_token(client):
+    resp = client.post(
+        "/api/unsubscribe?cid=camp1&rid=r1&t=invalid",
+        data="List-Unsubscribe=One-Click",
+        content_type="text/plain",
+    )
+    assert resp.status_code == 400
+
+
+def test_one_click_unsubscribe_rejects_substring_only_body(client, supabase):
+    camp, rid, token = _unsub_target(supabase)
+    resp = client.post(
+        f"/api/unsubscribe?cid={camp}&rid={rid}&t={token}",
+        data="prefix List-Unsubscribe=One-Click suffix",
+        content_type="text/plain",
+    )
+    assert resp.status_code == 400
+    assert not any(e["event_type"] == "unsubscribe" for e in supabase.events)
+
+
+def test_one_click_unsubscribe_accepts_newline_separated_body(client, supabase):
+    camp, rid, token = _unsub_target(supabase)
+    resp = client.post(
+        f"/api/unsubscribe?cid={camp}&rid={rid}&t={token}",
+        data="foo=bar\r\nList-Unsubscribe=One-Click",
         content_type="text/plain",
     )
     assert resp.status_code == 200
@@ -315,6 +381,31 @@ def test_get_and_patch_settings(client, supabase):
     assert body["default_batch_size"] == 123
     assert body["max_hard_bounce_rate"] == 0.01
     assert supabase.settings_row["default_batch_size"] == 123
+
+
+def test_patch_settings_rejects_unknown_field(client, supabase):
+    supabase.settings_row = {"id": "s1", "sender_email": "old@x.co"}
+    resp = client.patch("/api/settings", json={"sender_emial": "typo@x.co"})
+    assert resp.status_code == 422
+    assert supabase.settings_row["sender_email"] == "old@x.co"
+
+
+def test_patch_settings_explicit_null_clears_field(client, supabase):
+    supabase.settings_row = {
+        "id": "s1", "sender_email": "old@x.co", "reply_to_email": "r@x.co",
+    }
+    resp = client.patch("/api/settings", json={"reply_to_email": None})
+    assert resp.status_code == 200
+    assert supabase.settings_row["reply_to_email"] is None
+
+
+def test_patch_settings_omitted_field_is_untouched(client, supabase):
+    supabase.settings_row = {
+        "id": "s1", "sender_email": "old@x.co", "reply_to_email": "r@x.co",
+    }
+    resp = client.patch("/api/settings", json={"sender_name": "X"})
+    assert resp.status_code == 200
+    assert supabase.settings_row["reply_to_email"] == "r@x.co"
 
 
 def test_patch_settings_creates_row_when_missing(client, supabase):
@@ -515,6 +606,68 @@ def test_brevo_webhook_normalises_camelcase_and_attribute(client, app, supabase)
         assert supabase.get_campaign(campaign["id"])["stats"]["opens"] == 1
         recipient = next(r for r in supabase.recipients if r["id"] == rid)
         assert recipient["opened_at"] == "now()"
+    finally:
+        app.config["SETTINGS"].brevo_webhook_secret = original
+
+
+def test_brevo_webhook_splits_hard_and_soft_bounces(client, app, supabase):
+    original = _set_webhook_secret(app, "tok")
+    try:
+        contact = supabase.create_contact({"email": "bounce@example.com"})[0]
+        campaign = supabase.create_campaign({
+            "name": "C", "subject": "S", "from_email": "a@b.co",
+            "from_name": "X", "html_content": "hi",
+        })
+        supabase.add_recipient_ids(campaign["id"], [contact["id"]])
+        rid = _r_id(supabase, campaign["id"])
+        custom = f"campaign={campaign['id']};recipient={rid}"
+
+        client.post(
+            "/api/webhooks/brevo?token=tok",
+            json=[{"event": "hard_bounce", "email": contact["email"],
+                   "X-Mailin-custom": custom}],
+        )
+        stats = supabase.get_campaign(campaign["id"])["stats"]
+        assert stats["bounces"] == 1
+        assert stats["hard_bounce"] == 1
+        assert stats.get("soft_bounce", 0) == 0
+
+        client.post(
+            "/api/webhooks/brevo?token=tok",
+            json=[{"event": "soft_bounce", "email": contact["email"],
+                   "X-Mailin-custom": custom}],
+        )
+        stats = supabase.get_campaign(campaign["id"])["stats"]
+        assert stats["bounces"] == 2
+        assert stats["hard_bounce"] == 1
+        assert stats["soft_bounce"] == 1
+    finally:
+        app.config["SETTINGS"].brevo_webhook_secret = original
+
+
+def test_brevo_webhook_records_error_as_failed(client, app, supabase):
+    original = _set_webhook_secret(app, "tok")
+    try:
+        contact = supabase.create_contact({"email": "err@example.com"})[0]
+        campaign = supabase.create_campaign({
+            "name": "C", "subject": "S", "from_email": "a@b.co",
+            "from_name": "X", "html_content": "hi",
+        })
+        supabase.add_recipient_ids(campaign["id"], [contact["id"]])
+        rid = _r_id(supabase, campaign["id"])
+
+        resp = client.post(
+            "/api/webhooks/brevo?token=tok",
+            json=[{
+                "event": "error",
+                "email": contact["email"],
+                "X-Mailin-custom": f"campaign={campaign['id']};recipient={rid}",
+            }],
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["processed"] == 1
+        assert supabase.get_campaign(campaign["id"])["stats"]["failed"] == 1
+        assert next(r for r in supabase.recipients if r["id"] == rid)["status"] == "failed"
     finally:
         app.config["SETTINGS"].brevo_webhook_secret = original
 

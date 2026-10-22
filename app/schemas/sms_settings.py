@@ -1,4 +1,4 @@
-﻿"""SMS channel settings schemas."""
+"""SMS channel settings schemas."""
 from __future__ import annotations
 
 from datetime import date, time

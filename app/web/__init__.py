@@ -1,4 +1,4 @@
-﻿"""Server-rendered dashboard UI for web_mailer.
+"""Server-rendered dashboard UI for web_mailer.
 
 Pages render data straight from Supabase; mutations reuse the validated
 ``/api/*`` endpoints via fetch (see static/app.js). This keeps the web layer
@@ -380,7 +380,9 @@ def sms_index():
     try:
         from app.core.sms_credits import sms_credit_snapshot
 
-        credits = sms_credit_snapshot()
+        # Never call Brevo during a render: use the cache only, the page
+        # refreshes the balance in the background via /api/sms/account.
+        credits = sms_credit_snapshot(allow_fetch=False)
     except Exception:  # noqa: BLE001 - never break the dashboard
         credits = {"available": False, "credits": None, "low": False,
                    "threshold": settings.get("low_credit_threshold")}
@@ -563,7 +565,7 @@ def sms_settings_page():
     try:
         from app.core.sms_credits import sms_credit_snapshot
 
-        credits = sms_credit_snapshot()
+        credits = sms_credit_snapshot(allow_fetch=False)
     except Exception:  # noqa: BLE001
         pass
 

@@ -1,10 +1,10 @@
-﻿"""Application-wide (global) mailer settings schemas."""
+"""Application-wide (global) mailer settings schemas."""
 from __future__ import annotations
 
 from datetime import date, time
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.config import (
     MAX_BATCH_SIZE,
@@ -23,6 +23,10 @@ class SettingsUpdate(BaseModel):
     Values are clamped to hard safety ceilings so a misconfiguration can never
     turn the sender into a cannon.
     """
+
+    # Reject unknown keys so a typo (e.g. "sender_emial") cannot silently
+    # look like a successful save.
+    model_config = ConfigDict(extra="forbid")
 
     # Sender identity
     sender_email: EmailStr | None = None

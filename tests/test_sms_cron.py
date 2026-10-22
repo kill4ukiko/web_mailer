@@ -1,7 +1,18 @@
 """Redis-less cron driver: SMS promotion, sending and the SMS kill switch."""
 from __future__ import annotations
 
+import pytest
+
 from app.core.sms import SmsSendResult
+
+
+@pytest.fixture(autouse=True)
+def _cron_send_mode(app, monkeypatch):
+    """The tick guard refuses to run outside SEND_MODE=cron."""
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "send_mode", "cron")
+    yield
 
 
 def _sending_sms_campaign(supabase, *, n=2, status="sending", schedule_at=None):

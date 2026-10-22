@@ -1,4 +1,4 @@
-﻿"""Bird template catalogue (workspace API with built-in fallback)."""
+"""Bird template catalogue (workspace API with built-in fallback)."""
 from __future__ import annotations
 
 import time

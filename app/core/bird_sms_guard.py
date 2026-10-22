@@ -1,4 +1,4 @@
-﻿"""Safety guard for Bird SMS settings (absolute caps + daily spend)."""
+"""Safety guard for Bird SMS settings (absolute caps + daily spend)."""
 from __future__ import annotations
 
 from typing import Any

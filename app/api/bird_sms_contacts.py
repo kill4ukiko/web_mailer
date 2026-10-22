@@ -1,4 +1,4 @@
-﻿"""SMS contact management & import endpoints.
+"""SMS contact management & import endpoints.
 
 Mirrors the email contacts API but is phone-keyed and completely isolated: an
 SMS import can never touch email contacts, and phone suppression is preserved by
@@ -15,6 +15,8 @@ from pydantic import ValidationError
 
 from app.core.bird_sms_config import effective_bird_settings
 from app.core.bird_sms_store import get_bird_store
+from app.core.supabase_client import SMS_DELIVERY_FILTERS
+from app.extensions import limiter
 from app.schemas.bird_sms_contacts import (
     BirdBulkDelete,
     BirdContactCreate,
@@ -95,6 +97,11 @@ def list_contacts():
 
     status = request.args.get("status")
     delivery = request.args.get("delivery")
+    if delivery and delivery not in SMS_DELIVERY_FILTERS:
+        return jsonify({
+            "error": f"unknown delivery filter: {delivery}",
+            "allowed": sorted(SMS_DELIVERY_FILTERS),
+        }), 400
     include_deleted = request.args.get("deleted") in ("1", "true", "yes")
     data = get_bird_store().list_sms_contacts(
         page=page, limit=limit, status=status,
@@ -128,6 +135,7 @@ def create_contact():
 
 
 @bp.post("/import/preview")
+@limiter.limit("30 per minute")
 def preview_import():
     """POST /api/sms/contacts/import/preview  (multipart, field: file)"""
     uploaded = request.files.get("file")
@@ -155,6 +163,7 @@ def preview_import():
 
 
 @bp.post("/import")
+@limiter.limit("10 per minute")
 def import_contacts():
     """POST /api/sms/contacts/import  (multipart)
 
@@ -229,6 +238,7 @@ def import_contacts():
 
 
 @bp.post("/import/commit")
+@limiter.limit("10 per minute")
 def commit_import():
     """POST /api/sms/contacts/import/commit  {rows, list_id?, list_name?}"""
     from app.core.bird_sms_content import normalise_phone
@@ -282,7 +292,7 @@ def commit_import():
 
 @bp.get("/search")
 def search_contacts():
-    """GET /api/sms/contacts/search?q=&limit=20 â€” picker search."""
+    """GET /api/sms/contacts/search?q=&limit=20 — picker search."""
     q = request.args.get("q", "")
     try:
         limit = min(max(int(request.args.get("limit", 20)), 1), 100)
@@ -293,7 +303,7 @@ def search_contacts():
 
 @bp.patch("/<contact_id>")
 def update_contact(contact_id: str):
-    """PATCH /api/sms/contacts/<id> â€” inline edit of an SMS contact."""
+    """PATCH /api/sms/contacts/<id> — inline edit of an SMS contact."""
     from app.core.bird_sms_content import normalise_phone
 
     try:
@@ -342,7 +352,7 @@ def update_status():
 
 @bp.delete("/<contact_id>")
 def delete_contact(contact_id: str):
-    """DELETE /api/sms/contacts/<id> â€” remove a contact (recipients cascade)."""
+    """DELETE /api/sms/contacts/<id> — remove a contact (recipients cascade)."""
     deleted = get_bird_store().delete_sms_contact(contact_id)
     if not deleted:
         return jsonify({"error": "contact not found"}), 404
@@ -351,7 +361,7 @@ def delete_contact(contact_id: str):
 
 @bp.post("/bulk-delete")
 def bulk_delete_contacts():
-    """POST /api/sms/contacts/bulk-delete  {ids: [...]} â€” hard remove."""
+    """POST /api/sms/contacts/bulk-delete  {ids: [...]} — hard remove."""
     try:
         payload = BirdBulkDelete.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -365,7 +375,7 @@ def bulk_delete_contacts():
 
 @bp.post("/soft-delete")
 def soft_delete_contacts():
-    """POST /api/sms/contacts/soft-delete  {ids: [...]} â€” hide, keep state."""
+    """POST /api/sms/contacts/soft-delete  {ids: [...]} — hide, keep state."""
     try:
         payload = BirdBulkDelete.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -379,7 +389,7 @@ def soft_delete_contacts():
 
 @bp.post("/restore")
 def restore_contacts():
-    """POST /api/sms/contacts/restore  {ids: [...]} â€” un-hide soft-deleted."""
+    """POST /api/sms/contacts/restore  {ids: [...]} — un-hide soft-deleted."""
     try:
         payload = BirdBulkDelete.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:

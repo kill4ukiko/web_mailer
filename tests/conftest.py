@@ -1,4 +1,4 @@
-﻿"""PyTest fixtures. Runs against an in-memory fake Supabase (no network)."""
+"""PyTest fixtures. Runs against an in-memory fake Supabase (no network)."""
 from __future__ import annotations
 
 from typing import Any
@@ -668,7 +668,7 @@ class FakeSupabase:
             "circuit_state": "ok",
             "status": data.get("status", "draft"),
             "priority": data.get("priority", "normal"),
-            "stats": {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0},
+            "stats": {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0, "unsubscribes": 0},
             "created_at": "2026-01-01T00:00:00Z",
             "started_at": None,
             "finished_at": None,
@@ -751,12 +751,30 @@ class FakeSupabase:
         return items[:limit]
 
     def update_recipient(self, recipient_id, data):
-        self.bulk_update_recipients([recipient_id], data)
+        return self.bulk_update_recipients([recipient_id], data)
+
+    def get_recipient_unsubscribe_context(self, recipient_id, strict=False):
+        recipient = next((r for r in self.recipients if r["id"] == recipient_id), None)
+        if recipient is None:
+            return None
+        contact = next(
+            (c for c in self.contacts if c["id"] == recipient.get("contact_id")),
+            None,
+        )
+        return {
+            "status": recipient.get("status"),
+            "contact_id": recipient.get("contact_id"),
+            "campaign_id": recipient.get("campaign_id"),
+            "email": contact.get("email") if contact else None,
+        }
 
     def bulk_update_recipients(self, recipient_ids, data):
+        changed = 0
         for r in self.recipients:
             if r["id"] in recipient_ids:
                 r.update(data)
+                changed += 1
+        return changed
 
     # ----- stored procedures -----
     def claim_recipients(self, campaign_id, limit):
@@ -835,7 +853,7 @@ class FakeSupabase:
             campaign["stats"][field] = campaign["stats"].get(field, 0) + delta
 
     def _default_stats(self):
-        return {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0}
+        return {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0, "unsubscribes": 0}
 
     def get_settings_row(self):
         return self.settings_row

@@ -1,4 +1,4 @@
-﻿"""Shared extension instances: Supabase, Redis, Limiter and Celery.
+"""Shared extension instances: Supabase, Redis, Limiter and Celery.
 
 These are intentionally written as thin holders so that they can be
 initialised lazily inside the Flask application factory and inside the
@@ -9,13 +9,13 @@ from __future__ import annotations
 import redis as redis_py
 from celery import Celery
 from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from flask_wtf import CSRFProtect
 
 from app.config import get_settings
+from app.core.client_ip import get_client_ip
 
 # Flask-Limiter (rate limiting / DoS protection)
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_client_ip)
 
 # CSRF protection for browser form/JSON posts.
 csrf = CSRFProtect()
@@ -125,7 +125,8 @@ def _default_beat_schedule() -> dict:
             "task": "app.workers.tasks_sms_monitor.reconcile_stuck_sms_campaigns",
             "schedule": 300.0,  # every 5 minutes
             "options": {"queue": "monitor"},
-        },        "evaluate-bird-sms-circuit-breakers": {
+        },
+        "evaluate-bird-sms-circuit-breakers": {
             "task": "app.workers.tasks_bird_sms_monitor.evaluate_bird_sms_circuit",
             "schedule": 300.0,
             "options": {"queue": "monitor"},

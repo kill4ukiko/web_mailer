@@ -1,4 +1,4 @@
-﻿"""Bird SMS workspace tests (no network)."""
+"""Bird SMS workspace tests (no network)."""
 from __future__ import annotations
 
 import base64

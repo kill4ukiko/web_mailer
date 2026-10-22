@@ -55,14 +55,20 @@ def test_send_campaign_sends_batch_and_completes(supabase, monkeypatch):
     assert all(r["status"] == "sent" for r in supabase.recipients)
     assert supabase.get_campaign(campaign["id"])["stats"]["sent"] == 2
 
-    # Verify RFC 8058 one-click unsubscribe headers were attached.
+    # Verify RFC 8058 one-click unsubscribe headers were attached and signed.
+    from urllib.parse import parse_qs, urlparse
+
     headers = captured["headers_factory"](captured["recipients"][0])
     assert "List-Unsubscribe-Post" in headers
     assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
-    assert campaign["id"] in headers["List-Unsubscribe"]
+    unsubscribe_url = headers["List-Unsubscribe"].strip("<>")
+    query = parse_qs(urlparse(unsubscribe_url).query)
+    rid = captured["recipients"][0]["recipient_id"]
+    assert query["cid"] == [campaign["id"]]
+    assert query["rid"] == [rid]
+    assert query["t"][0]
 
     # X-Mailin-custom lets Brevo webhooks attribute opens/clicks to our rows.
-    rid = captured["recipients"][0]["recipient_id"]
     assert f"campaign={campaign['id']}" in headers["X-Mailin-custom"]
     assert f"recipient={rid}" in headers["X-Mailin-custom"]
 
@@ -96,6 +102,85 @@ def test_send_campaign_completes_when_queue_drained(supabase, monkeypatch):
     result = send_campaign.run(campaign["id"])
     assert result["sent"] == 1
     assert supabase.get_campaign(campaign["id"])["status"] == "completed"
+
+
+def test_bird_tasks_are_registered_with_the_worker():
+    from app.workers.celery_app import celery
+
+    assert "app.workers.tasks_bird_sms.send_bird_sms_campaign" in celery.tasks
+    assert "app.workers.tasks_bird_sms_monitor.evaluate_bird_sms_circuit" in celery.tasks
+
+
+def test_bird_dispatch_uses_the_registered_task(monkeypatch):
+    from app.api import bird_sms_campaigns
+    from app.workers import tasks_bird_sms
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        tasks_bird_sms.send_bird_sms_campaign,
+        "delay",
+        lambda campaign_id: calls.append(campaign_id),
+    )
+    bird_sms_campaigns._dispatch("c1")
+    assert calls == ["c1"]
+
+
+def test_transport_error_releases_claims(supabase, monkeypatch):
+    from app.workers import tasks_campaign
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=2, status="sending")
+
+    def boom(self, **kwargs):
+        raise RuntimeError("brevo unavailable")
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_batch", boom)
+    monkeypatch.setattr(
+        tasks_campaign.send_campaign, "apply_async", lambda *a, **k: None
+    )
+
+    try:
+        tasks_campaign.send_campaign.run(campaign["id"])
+    except RuntimeError:
+        pass
+    else:  # pragma: no cover - the error must surface
+        raise AssertionError("send_campaign should propagate the transport error")
+
+    assert [r["status"] for r in supabase.recipients] == ["queued", "queued"]
+    assert supabase.get_campaign(campaign["id"])["status"] == "sending"
+
+
+def test_completion_guard_does_not_silently_skip_large_queue(supabase, monkeypatch):
+    from app.workers import tasks_campaign
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=0)
+    for i in range(1001):
+        supabase.recipients.append({
+            "id": f"q{i}",
+            "campaign_id": campaign["id"],
+            "contact_id": "missing",  # ineligible -> claim returns nothing
+            "status": "queued",
+            "sent_at": None,
+            "opened_at": None,
+            "clicked_at": None,
+            "last_error": None,
+        })
+    monkeypatch.setattr(
+        tasks_campaign.send_campaign, "apply_async", lambda *a, **k: None
+    )
+    monkeypatch.setattr("app.core.notifications.notify", lambda *a, **k: True)
+
+    result = tasks_campaign.send_campaign.run(campaign["id"])
+
+    assert result["status"] == "sending"
+    assert result["requeue_in"] == tasks_campaign.COMPLETION_GUARD_RETRY_SECONDS
+    assert supabase.get_campaign(campaign["id"])["status"] == "sending"
+    assert supabase.count_recipients(campaign["id"], status="queued") == 1001
+
+    # The guard only fires once; the retry must eventually drain the queue.
+    result = tasks_campaign.send_campaign.run(campaign["id"])
+    assert result["status"] == "completed"
+    assert supabase.get_campaign(campaign["id"])["status"] == "completed"
+    assert supabase.count_recipients(campaign["id"], status="queued") == 0
 
 
 def test_evaluate_circuit_trips_on_high_bounce_rate(supabase, monkeypatch):

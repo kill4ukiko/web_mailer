@@ -105,7 +105,7 @@ def tick_budgets(
         # should re-check soon (a priority run can finish at any moment).
         return {high["id"]: min(headroom, batch_size)}, 30, "priority"
 
-    share = max(1, headroom // len(active))
+    share = headroom // len(active)
     return {
         campaign["id"]: min(share, batch_size) for campaign in active
     }, CAP_RETRY_SECONDS, None

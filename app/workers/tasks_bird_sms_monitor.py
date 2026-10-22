@@ -1,4 +1,4 @@
-﻿"""Bird SMS circuit breaker & health monitor tasks."""
+"""Bird SMS circuit breaker & health monitor tasks."""
 from __future__ import annotations
 
 import logging

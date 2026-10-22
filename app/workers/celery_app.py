@@ -1,7 +1,7 @@
 """Celery application configuration & task base that carries Flask context."""
 from __future__ import annotations
 
-from celery import Task
+from celery import Celery, Task
 
 from app.extensions import celery_app, init_celery
 
@@ -31,8 +31,11 @@ def make_celery() -> Celery:
 
 celery = make_celery()
 
-# Import task modules so they register with the worker.
+# Import task modules so they register with the worker. Beat schedules task
+# names, so a missing import here means "received unregistered task".
 from app.workers import (  # noqa: E402,F401
+    tasks_bird_sms,
+    tasks_bird_sms_monitor,
     tasks_campaign,
     tasks_monitor,
     tasks_sms,

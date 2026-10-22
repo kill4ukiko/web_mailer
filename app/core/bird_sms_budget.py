@@ -1,4 +1,4 @@
-﻿"""Fair-share Bird SMS budget (recipient caps + daily spend ceiling)."""
+"""Fair-share Bird SMS budget (recipient caps + daily spend ceiling)."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -54,5 +54,5 @@ def tick_bird_budgets(supabase, settings: dict[str, Any],
     high = next((c for c in active if str(c.get("priority") or "") == "high"), None)
     if high:
         return {high["id"]: min(headroom, batch_size)}, 30, "priority"
-    share = max(1, headroom // len(active))
+    share = headroom // len(active)
     return {c["id"]: min(share, batch_size) for c in active}, CAP_RETRY_SECONDS, None

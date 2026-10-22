@@ -1,4 +1,4 @@
-﻿"""Bird webhook verification (Standard Webhooks / Svix-compatible HMAC)."""
+"""Bird webhook verification (Standard Webhooks / Svix-compatible HMAC)."""
 from __future__ import annotations
 
 import base64

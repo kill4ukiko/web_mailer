@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block title %}Settings &middot; webmailer{% endblock %}
 {% macro info(key) -%}
 <button type="button" class="info-icon" data-info="{{ key }}" aria-label="More information">i</button>
@@ -121,7 +121,7 @@
         Stagger jitter (seconds) {{ info('stagger_seconds') }}
         <input type="number" name="default_stagger_seconds" min="0" max="86400"
                value="{{ s.get('default_stagger_seconds') if s.get('default_stagger_seconds') is not none else 0 }}">
-        <small class="muted">Random 0..N second delay between every email. Honoured exactly â€”
+        <small class="muted">Random 0..N second delay between every email. Honoured exactly —
           longer delay just schedules the next email later.</small>
         {% if estimate is not none %}
         <small class="muted">Estimated throughput: ~{{ estimate }} emails/hour

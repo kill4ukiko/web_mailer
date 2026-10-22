@@ -1,4 +1,4 @@
-﻿"""Reusable SMS template endpoints (save / reuse / preview)."""
+"""Reusable SMS template endpoints (save / reuse / preview)."""
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
@@ -14,7 +14,7 @@ bp = Blueprint("bird_sms_templates", __name__, url_prefix="/api/bird-sms/templat
 
 @bp.get("")
 def list_templates():
-    """GET /api/sms/templates â€” all saved SMS templates (newest first)."""
+    """GET /api/sms/templates — all saved SMS templates (newest first)."""
     return jsonify({"items": get_bird_store().list_sms_templates()}), 200
 
 
@@ -43,7 +43,7 @@ def create_template():
 
 @bp.get("/<template_id>")
 def get_template(template_id: str):
-    """GET /api/sms/templates/<id> â€” one template."""
+    """GET /api/sms/templates/<id> — one template."""
     entry = get_bird_store().get_sms_template(template_id)
     if entry is None:
         return jsonify({"error": "template not found"}), 404
@@ -52,7 +52,7 @@ def get_template(template_id: str):
 
 @bp.patch("/<template_id>")
 def update_template(template_id: str):
-    """PATCH /api/sms/templates/<id> â€” edit name / content / flags."""
+    """PATCH /api/sms/templates/<id> — edit name / content / flags."""
     try:
         payload = BirdTemplateUpdate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -74,7 +74,7 @@ def update_template(template_id: str):
 
 @bp.delete("/<template_id>")
 def delete_template(template_id: str):
-    """DELETE /api/sms/templates/<id> â€” remove a template."""
+    """DELETE /api/sms/templates/<id> — remove a template."""
     supabase = get_bird_store()
     if supabase.get_sms_template(template_id) is None:
         return jsonify({"error": "template not found"}), 404

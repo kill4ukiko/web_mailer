@@ -1,4 +1,4 @@
-﻿{% extends "sms/base.html" %}
+{% extends "sms/base.html" %}
 {% block title %}Report &middot; {{ campaign.name }} &middot; SMS{% endblock %}
 {% block content %}
 <p><a class="link" href="{{ url_for('web.sms_campaign_detail', campaign_id=campaign.id) }}">&larr; {{ campaign.name }}</a></p>
@@ -38,8 +38,8 @@
       <td>{{ r.phone or '' }}</td>
       <td>{{ r.first_name or '' }}</td>
       <td>{{ r.last_name or '' }}</td>
-      <td><span class="badge badge-{{ r.contact_status }}">{{ r.contact_status or 'â€”' }}</span></td>
-      <td><span class="badge badge-{{ r.recipient_status }}">{{ (r.recipient_status or 'â€”').replace('_', ' ') }}</span></td>
+      <td><span class="badge badge-{{ r.contact_status }}">{{ r.contact_status or '—' }}</span></td>
+      <td><span class="badge badge-{{ r.recipient_status }}">{{ (r.recipient_status or '—').replace('_', ' ') }}</span></td>
       <td class="muted">{{ r.sent_at[:19].replace('T', ' ') if r.sent_at else '' }}</td>
       <td class="muted">{{ r.delivered_at[:19].replace('T', ' ') if r.delivered_at else '' }}</td>
       <td class="num">{{ r.segments if r.segments is not none else '' }}</td>

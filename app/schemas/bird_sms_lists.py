@@ -1,4 +1,4 @@
-﻿"""Bird SMS list request schemas."""
+"""Bird SMS list request schemas."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field

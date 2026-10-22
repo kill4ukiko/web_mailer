@@ -1,4 +1,4 @@
-﻿"""Bird SMS persistence layer.
+"""Bird SMS persistence layer.
 
 All Bird tables are isolated from the email and Brevo SMS stacks. The method
 names intentionally mirror the SMS store so protocol code can be shared, but

@@ -207,25 +207,36 @@ legend {
 
 /* --- Info icons & modal --- */
 .info-icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   margin-left: 4px;
   border-radius: 50%;
   border: 1px solid var(--accent);
   background: transparent;
   color: var(--accent);
-  font-size: 11px;
+  font-size: 12px;
   font-style: italic;
   font-weight: 700;
   line-height: 1;
-  cursor: pointer;
+  cursor: help;
   padding: 0;
   vertical-align: middle;
 }
+.info-icon::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
 .info-icon:hover { background: var(--accent); color: #fff; }
+.info-icon:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, .28);
+  outline-offset: 2px;
+}
 
 .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; }
 .modal[hidden] { display: none; }

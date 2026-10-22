@@ -1,4 +1,4 @@
-﻿"""SMS list management endpoints (reusable phone groups)."""
+"""SMS list management endpoints (reusable phone groups)."""
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
@@ -35,7 +35,7 @@ def _normalise_phones(phones: list[str]) -> tuple[list[str], list[str]]:
 
 @bp.get("")
 def list_lists():
-    """GET /api/sms/lists â€” all SMS lists with member counts."""
+    """GET /api/sms/lists — all SMS lists with member counts."""
     return jsonify({"items": get_bird_store().list_sms_lists()}), 200
 
 
@@ -66,7 +66,7 @@ def create_list():
 
 @bp.get("/<list_id>")
 def get_list(list_id: str):
-    """GET /api/sms/lists/<id> â€” list metadata + members."""
+    """GET /api/sms/lists/<id> — list metadata + members."""
     supabase = get_bird_store()
     entry = supabase.get_sms_list(list_id)
     if entry is None:
@@ -77,7 +77,7 @@ def get_list(list_id: str):
 
 @bp.patch("/<list_id>")
 def update_list(list_id: str):
-    """PATCH /api/sms/lists/<id> â€” rename / re-describe a list."""
+    """PATCH /api/sms/lists/<id> — rename / re-describe a list."""
     try:
         payload = BirdListUpdate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -95,7 +95,7 @@ def update_list(list_id: str):
 
 @bp.delete("/<list_id>")
 def delete_list(list_id: str):
-    """DELETE /api/sms/lists/<id> â€” remove a list (memberships cascade)."""
+    """DELETE /api/sms/lists/<id> — remove a list (memberships cascade)."""
     supabase = get_bird_store()
     if supabase.get_sms_list(list_id) is None:
         return jsonify({"error": "list not found"}), 404
@@ -128,7 +128,7 @@ def add_members(list_id: str):
 
 @bp.delete("/<list_id>/members/<contact_id>")
 def remove_member(list_id: str, contact_id: str):
-    """DELETE /api/sms/lists/<id>/members/<contact_id> â€” drop one member."""
+    """DELETE /api/sms/lists/<id>/members/<contact_id> — drop one member."""
     removed = get_bird_store().remove_sms_member(list_id, contact_id)
     if not removed:
         return jsonify({"error": "membership not found"}), 404

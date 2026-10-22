@@ -1,4 +1,4 @@
-﻿"""Bird SMS delivery webhooks (Standard Webhooks signature verification)."""
+"""Bird SMS delivery webhooks (Standard Webhooks signature verification)."""
 from __future__ import annotations
 
 import logging

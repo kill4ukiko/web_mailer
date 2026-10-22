@@ -1,4 +1,4 @@
-﻿{% extends "bird/base.html" %}
+{% extends "bird/base.html" %}
 {% block title %}Bird SMS settings &middot; webmailer{% endblock %}
 {% block content %}
 {% set s = settings or {} %}
@@ -14,9 +14,9 @@
         <input type="password" name="bird_api_key" autocomplete="off" placeholder="{{ s.get('bird_api_key_hint') or 'bk_...' }}">
         <small class="muted">{% if s.get('bird_api_key_set') %}Key set. Leave blank to keep it.{% else %}Workspace API key with SMS send scope.{% endif %}</small>
       </label>
-      <label>Management API key <span class="muted">(optional)</span>
+      <label>Management API key <button type="button" class="info-icon" data-info="bird_management_key">i</button> <span class="muted">(optional)</span>
         <input type="password" name="bird_management_api_key" autocomplete="off" placeholder="{{ s.get('bird_management_api_key_hint') or 'bk_...' }}">
-        <small class="muted">Only needed to browse the template catalogue (<code>sms_management</code> scope).</small>
+        <small class="muted">Only needed to browse the template catalogue (<code>sms_management</code> scope). Blank reuses the main Bird key.</small>
       </label>
       <label>Webhook signing secret <button type="button" class="info-icon" data-info="bird_webhook_secret">i</button>
         <input type="password" name="bird_webhook_secret" autocomplete="off" placeholder="{{ s.get('bird_webhook_secret_hint') or 'whsec_...' }}">
@@ -28,10 +28,10 @@
           <option value="eu1" {% if s.get('bird_region') == 'eu1' %}selected{% endif %}>EU (eu1)</option>
         </select>
       </label>
-      <label>Workspace ID <span class="muted">(optional)</span>
+      <label>Workspace ID <button type="button" class="info-icon" data-info="bird_workspace">i</button> <span class="muted">(optional)</span>
         <input type="text" name="bird_workspace_id" maxlength="128" value="{{ s.get('bird_workspace_id') or '' }}">
       </label>
-      <label>Public base URL
+      <label>Public base URL <button type="button" class="info-icon" data-info="bird_public_base_url">i</button>
         <input type="url" name="public_base_url" maxlength="512" value="{{ s.get('public_base_url') or '' }}" placeholder="https://track.yourdomain.com">
         <small class="muted">Must be publicly reachable; delivery webhooks use it.</small>
       </label>
@@ -42,8 +42,8 @@
   <fieldset>
     <legend>Sender &amp; encoding</legend>
     <div class="grid-2">
-      <label>Sender <input type="text" name="from_number" maxlength="32" value="{{ s.get('from_number') or '' }}" placeholder="+15551234567 or Acme"></label>
-      <label>Sender type <button type="button" class="info-icon" data-info="bird_sender">i</button>
+      <label>Sender <button type="button" class="info-icon" data-info="bird_sender">i</button> <input type="text" name="from_number" maxlength="32" value="{{ s.get('from_number') or '' }}" placeholder="+15551234567 or Acme"></label>
+      <label>Sender type <button type="button" class="info-icon" data-info="bird_sender_type">i</button>
         <select name="sender_type">
           <option value="alphanumeric" {% if (s.get('sender_type') or 'alphanumeric') == 'alphanumeric' %}selected{% endif %}>Alphanumeric</option>
           <option value="numeric" {% if s.get('sender_type') == 'numeric' %}selected{% endif %}>Numeric</option>
@@ -56,50 +56,50 @@
           {% endfor %}
         </select>
       </label>
-      <label>Default country code <input type="text" name="default_country_code" maxlength="8" value="{{ s.get('default_country_code') or '' }}" placeholder="+1"></label>
-      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="smart_encoding" {% if s.get('smart_encoding', true) %}checked{% endif %}> Smart encoding</span></label>
-      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code" {% if s.get('include_stop_code') %}checked{% endif %}> Append STOP by default</span></label>
+      <label>Default country code <button type="button" class="info-icon" data-info="bird_country">i</button> <input type="text" name="default_country_code" maxlength="8" value="{{ s.get('default_country_code') or '' }}" placeholder="+1"></label>
+      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="smart_encoding" {% if s.get('smart_encoding', true) %}checked{% endif %}> Smart encoding <button type="button" class="info-icon" data-info="bird_smart_encoding">i</button></span></label>
+      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code" {% if s.get('include_stop_code') %}checked{% endif %}> Append STOP by default <button type="button" class="info-icon" data-info="bird_include_stop">i</button></span></label>
     </div>
   </fieldset>
 
   <fieldset>
     <legend>Limits &amp; safety</legend>
     <div class="grid-2">
-      <label>Batch size <input type="number" name="default_batch_size" min="1" max="5000" value="{{ s.get('default_batch_size') or 250 }}"></label>
-      <label>Send rate / minute <input type="number" name="send_rate_per_minute" min="1" max="600" value="{{ s.get('send_rate_per_minute') or 30 }}"></label>
-      <label>Max recipients / hour <input type="number" name="max_recipients_per_hour" min="1" value="{{ s.get('max_recipients_per_hour') or 500 }}"></label>
-      <label>Max recipients / day <input type="number" name="max_recipients_per_day" min="1" value="{{ s.get('max_recipients_per_day') or 2000 }}"></label>
+      <label>Batch size <button type="button" class="info-icon" data-info="bird_batch_size">i</button> <input type="number" name="default_batch_size" min="1" max="5000" value="{{ s.get('default_batch_size') or 250 }}"></label>
+      <label>Send rate / minute <button type="button" class="info-icon" data-info="bird_rate">i</button> <input type="number" name="send_rate_per_minute" min="1" max="600" value="{{ s.get('send_rate_per_minute') or 30 }}"></label>
+      <label>Max recipients / hour <button type="button" class="info-icon" data-info="bird_caps">i</button> <input type="number" name="max_recipients_per_hour" min="1" value="{{ s.get('max_recipients_per_hour') or 500 }}"></label>
+      <label>Max recipients / day <button type="button" class="info-icon" data-info="bird_caps">i</button> <input type="number" name="max_recipients_per_day" min="1" value="{{ s.get('max_recipients_per_day') or 2000 }}"></label>
       <label>Max cost / day (USD) <button type="button" class="info-icon" data-info="bird_budget">i</button> <input type="number" name="max_cost_per_day" min="0" step="0.01" value="{{ s.get('max_cost_per_day') if s.get('max_cost_per_day') is not none else 20 }}"></label>
-      <label>Low budget warning (USD) <input type="number" name="low_budget_threshold" min="0" step="0.01" value="{{ s.get('low_budget_threshold') if s.get('low_budget_threshold') is not none else 5 }}"></label>
-      <label>Estimated cost / segment (USD) <input type="number" name="cost_per_segment" min="0.0001" step="0.0001" value="{{ s.get('cost_per_segment') or 0.008 }}"></label>
-      <label>Max hard-bounce rate <input type="number" name="max_hard_bounce_rate" min="0" max="1" step="0.001" value="{{ s.get('max_hard_bounce_rate') if s.get('max_hard_bounce_rate') is not none else 0.03 }}"></label>
-      <label>Default stagger (seconds) <input type="number" name="default_stagger_seconds" min="0" max="86400" value="{{ s.get('default_stagger_seconds') if s.get('default_stagger_seconds') is not none else 0 }}"></label>
-      <label>Collision window (seconds) <input type="number" name="collision_window_seconds" min="0" max="3600" value="{{ s.get('collision_window_seconds') if s.get('collision_window_seconds') is not none else 5 }}"></label>
-      <label>Cross-campaign gap min <input type="number" name="cross_gap_min_seconds" min="0" max="3600" value="{{ s.get('cross_gap_min_seconds') if s.get('cross_gap_min_seconds') is not none else 5 }}"></label>
-      <label>Cross-campaign gap max <input type="number" name="cross_gap_max_seconds" min="0" max="3600" value="{{ s.get('cross_gap_max_seconds') if s.get('cross_gap_max_seconds') is not none else 20 }}"></label>
-      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="sending_paused" {% if s.get('sending_paused') %}checked{% endif %}> Pause all Bird SMS sending</span></label>
-      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="warmup_enabled" {% if s.get('warmup_enabled') %}checked{% endif %}> Warmup enabled</span></label>
-      <label>Warmup start date <input type="date" name="warmup_start_date" value="{{ s.get('warmup_start_date') or '' }}"></label>
+      <label>Low budget warning (USD) <button type="button" class="info-icon" data-info="bird_low_budget">i</button> <input type="number" name="low_budget_threshold" min="0" step="0.01" value="{{ s.get('low_budget_threshold') if s.get('low_budget_threshold') is not none else 5 }}"></label>
+      <label>Estimated cost / segment (USD) <button type="button" class="info-icon" data-info="bird_cost_segment">i</button> <input type="number" name="cost_per_segment" min="0.0001" step="0.0001" value="{{ s.get('cost_per_segment') or 0.008 }}"></label>
+      <label>Max hard-bounce rate <button type="button" class="info-icon" data-info="bird_bounce_threshold">i</button> <input type="number" name="max_hard_bounce_rate" min="0" max="1" step="0.001" value="{{ s.get('max_hard_bounce_rate') if s.get('max_hard_bounce_rate') is not none else 0.03 }}"></label>
+      <label>Default stagger (seconds) <button type="button" class="info-icon" data-info="bird_stagger">i</button> <input type="number" name="default_stagger_seconds" min="0" max="86400" value="{{ s.get('default_stagger_seconds') if s.get('default_stagger_seconds') is not none else 0 }}"></label>
+      <label>Collision window (seconds) <button type="button" class="info-icon" data-info="bird_collision_window">i</button> <input type="number" name="collision_window_seconds" min="0" max="3600" value="{{ s.get('collision_window_seconds') if s.get('collision_window_seconds') is not none else 5 }}"></label>
+      <label>Cross-campaign gap min <button type="button" class="info-icon" data-info="bird_cross_gap">i</button> <input type="number" name="cross_gap_min_seconds" min="0" max="3600" value="{{ s.get('cross_gap_min_seconds') if s.get('cross_gap_min_seconds') is not none else 5 }}"></label>
+      <label>Cross-campaign gap max <button type="button" class="info-icon" data-info="bird_cross_gap">i</button> <input type="number" name="cross_gap_max_seconds" min="0" max="3600" value="{{ s.get('cross_gap_max_seconds') if s.get('cross_gap_max_seconds') is not none else 20 }}"></label>
+      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="sending_paused" {% if s.get('sending_paused') %}checked{% endif %}> Pause all Bird SMS sending <button type="button" class="info-icon" data-info="bird_pause">i</button></span></label>
+      <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="warmup_enabled" {% if s.get('warmup_enabled') %}checked{% endif %}> Warmup enabled <button type="button" class="info-icon" data-info="bird_warmup">i</button></span></label>
+      <label>Warmup start date <button type="button" class="info-icon" data-info="bird_warmup_start">i</button> <input type="date" name="warmup_start_date" value="{{ s.get('warmup_start_date') or '' }}"></label>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Quiet window</legend>
+    <legend>Quiet window <button type="button" class="info-icon" data-info="bird_quiet_window">i</button></legend>
     <div class="grid-2">
-      <label>Start <input type="time" name="default_window_start" value="{{ (s.get('default_window_start') or '')[:5] }}"></label>
-      <label>End <input type="time" name="default_window_end" value="{{ (s.get('default_window_end') or '')[:5] }}"></label>
-      <label>Timezone <input type="text" name="default_window_timezone" maxlength="64" value="{{ s.get('default_window_timezone') or 'UTC' }}"></label>
+      <label>Start <button type="button" class="info-icon" data-info="bird_quiet_window">i</button> <input type="time" name="default_window_start" value="{{ (s.get('default_window_start') or '')[:5] }}"></label>
+      <label>End <button type="button" class="info-icon" data-info="bird_quiet_window">i</button> <input type="time" name="default_window_end" value="{{ (s.get('default_window_end') or '')[:5] }}"></label>
+      <label>Timezone <button type="button" class="info-icon" data-info="bird_window_timezone">i</button> <input type="text" name="default_window_timezone" maxlength="64" value="{{ s.get('default_window_timezone') or 'UTC' }}"></label>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Telegram alerts for Bird SMS</legend>
+    <legend>Telegram alerts for Bird SMS <button type="button" class="info-icon" data-info="bird_telegram_override">i</button></legend>
     <div class="grid-2">
-      <label>Bot token override
+      <label>Bot token override <button type="button" class="info-icon" data-info="bird_telegram_override">i</button>
         <input type="password" name="telegram_bot_token" autocomplete="off" placeholder="{{ s.get('telegram_token_hint') or 'Uses the global token when blank' }}">
         <small class="muted">{% if s.get('telegram_token_set') %}Override set. Leave blank to keep it; submit an empty field with "Clear override" below.{% endif %}</small>
       </label>
-      <label>Chat ID override
+      <label>Chat ID override <button type="button" class="info-icon" data-info="bird_telegram_override">i</button>
         <input type="text" name="telegram_chat_id" maxlength="128" value="{{ s.get('telegram_chat_id') or '' }}" placeholder="Uses the global chat when blank">
         <small class="muted">Source: {{ {'db': 'database', 'env': 'environment', 'none': 'not configured'}.get(s.get('telegram_chat_source'), 'not configured') }}</small>
       </label>
@@ -118,7 +118,7 @@
 </form>
 
 <section class="panel">
-  <h2>Webhook requirements</h2>
+  <h2>Webhook requirements <button type="button" class="info-icon" data-info="bird_webhook_requirements">i</button></h2>
   <ul class="muted small">
     <li>Subscribe the endpoint above to SMS delivery and suppression events.</li>
     <li>Keep the signing secret set; unsigned or stale requests are rejected.</li>

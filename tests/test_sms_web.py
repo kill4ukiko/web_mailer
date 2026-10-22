@@ -1,4 +1,4 @@
-﻿"""Smoke tests for the server-rendered SMS workspace."""
+"""Smoke tests for the server-rendered SMS workspace."""
 from __future__ import annotations
 
 import pytest

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#ffffff">
+  <title>{% if state == 'success' %}Unsubscribed{% elif state == 'already' %}Already unsubscribed{% elif state == 'error' %}Unsubscribe retry{% elif state == 'test' %}Test message{% elif state == 'unknown' %}Subscription not found{% elif state == 'invalid' %}Invalid unsubscribe link{% else %}Confirm unsubscribe{% endif %}</title>
+  <style>
+    :root {
+      color-scheme: light only;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --panel: #f8fafc;
+      --accent: #1d4ed8;
+      --accent-hover: #1e40af;
+      --success: #067647;
+      --success-bg: #ecfdf3;
+      --warning: #b54708;
+      --warning-bg: #fffaeb;
+      --danger: #b42318;
+      --danger-bg: #fef3f2;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+    .shell {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 560px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+      padding: clamp(28px, 6vw, 48px);
+      box-shadow: 0 18px 50px rgba(16, 24, 40, .08);
+    }
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 5vw, 34px);
+      line-height: 1.15;
+      letter-spacing: -.02em;
+    }
+    .lead {
+      margin: 16px 0 0;
+      color: #475467;
+      font-size: 16px;
+    }
+    .note {
+      margin: 22px 0 26px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      color: #475467;
+      font-size: 14px;
+    }
+    form { margin: 0; }
+    button {
+      width: 100%;
+      min-height: 50px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s ease, transform .15s ease;
+    }
+    button:hover { background: var(--accent-hover); }
+    button:active { transform: translateY(1px); }
+    button:focus-visible {
+      outline: 3px solid rgba(29, 78, 216, .28);
+      outline-offset: 3px;
+    }
+    button:disabled {
+      cursor: wait;
+      opacity: .72;
+      transform: none;
+    }
+    .small {
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+    .state-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 46px;
+      height: 46px;
+      margin-bottom: 20px;
+      border-radius: 50%;
+      font-size: 23px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .state-icon.success { background: var(--success-bg); color: var(--success); }
+    .state-icon.warning { background: var(--warning-bg); color: var(--warning); }
+    .state-icon.danger { background: var(--danger-bg); color: var(--danger); }
+    .meta {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 480px) {
+      .shell { padding: 24px 14px; align-items: flex-start; }
+      .card { margin-top: 8vh; padding: 28px 22px; border-radius: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="card" aria-labelledby="page-title">
+      {% if state == 'confirm' %}
+        <p class="eyebrow">Email preferences</p>
+        <h1 id="page-title">Unsubscribe from these emails?</h1>
+        <p class="lead">This will stop future campaign emails to the address that received this message.</p>
+        <div class="note">Nothing has changed yet. Your subscription stays active unless you confirm below.</div>
+        <form method="post" action="/api/unsubscribe/confirm" data-unsubscribe-form>
+          <input type="hidden" name="cid" value="{{ campaign_id }}">
+          <input type="hidden" name="rid" value="{{ recipient_id }}">
+          <input type="hidden" name="t" value="{{ token }}">
+          <button type="submit">Confirm unsubscribe</button>
+        </form>
+        <p class="small">You can safely close this page without making any changes.</p>
+      {% elif state == 'success' %}
+        <div class="state-icon success" aria-hidden="true">&#10003;</div>
+        <h1 id="page-title">You&rsquo;re unsubscribed</h1>
+        <p class="lead">No further campaign emails will be sent to this address.</p>
+        <p class="small">You can close this page now.</p>
+      {% elif state == 'already' %}
+        <div class="state-icon success" aria-hidden="true">&#10003;</div>
+        <h1 id="page-title">You&rsquo;re already unsubscribed</h1>
+        <p class="lead">This address is already on the opt-out list, so no further campaign emails will be sent.</p>
+        <p class="small">You can close this page now.</p>
+      {% elif state == 'test' %}
+        <div class="state-icon warning" aria-hidden="true">i</div>
+        <h1 id="page-title">This is a test message</h1>
+        <p class="lead">Test sends are not part of a real campaign, so there is no subscription to cancel.</p>
+        <p class="small">Real campaign emails always include a working unsubscribe link.</p>
+      {% elif state == 'unknown' %}
+        <div class="state-icon warning" aria-hidden="true">?</div>
+        <h1 id="page-title">We couldn&rsquo;t find that subscription</h1>
+        <p class="lead">This link belongs to a campaign that no longer exists, so there is nothing to change.</p>
+        <div class="note">If you are still receiving emails, open the unsubscribe link in the most recent message instead.</div>
+      {% elif state == 'error' %}
+        <div class="state-icon danger" aria-hidden="true">!</div>
+        <h1 id="page-title">We couldn&rsquo;t complete that request</h1>
+        <p class="lead">The change may not have been saved. Please try again.</p>
+        <div class="note">If the problem continues, contact the sender using the reply-to address in the email you received.</div>
+        <form method="post" action="/api/unsubscribe/confirm" data-unsubscribe-form>
+          <input type="hidden" name="cid" value="{{ campaign_id }}">
+          <input type="hidden" name="rid" value="{{ recipient_id }}">
+          <input type="hidden" name="t" value="{{ token }}">
+          <button type="submit">Try again</button>
+        </form>
+      {% else %}
+        <div class="state-icon warning" aria-hidden="true">!</div>
+        <h1 id="page-title">This link can&rsquo;t be used</h1>
+        <p class="lead">The unsubscribe link is incomplete, invalid, or has expired.</p>
+        <p class="small">Please use the unsubscribe link from a recent email, or contact the sender for help.</p>
+      {% endif %}
+    </section>
+  </main>
+  <script>
+    document.querySelectorAll("form[data-unsubscribe-form]").forEach(function (form) {
+      form.addEventListener("submit", function () {
+        var button = form.querySelector("button[type=submit]");
+        if (!button) return;
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "Unsubscribing\u2026";
+      });
+    });
+  </script>
+</body>
+</html>

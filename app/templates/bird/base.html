@@ -1,4 +1,4 @@
-﻿{% extends "base.html" %}
+{% extends "base.html" %}
 {% block nav %}
 <a href="{{ url_for('web.bird_sms_index') }}" class="{{ 'nav-active' if request.endpoint == 'web.bird_sms_index' else '' }}">Bird SMS home</a>
 <a href="{{ url_for('web.bird_sms_contacts_page') }}" class="{{ 'nav-active' if request.endpoint == 'web.bird_sms_contacts_page' else '' }}">Contacts</a>
@@ -9,5 +9,5 @@
 <a href="{{ url_for('web.home') }}" title="Back to the channel chooser">&#8962;</a>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='bird_sms.js') }}"></script>
+<script src="{{ url_for('static', filename='bird_sms.js') }}?v={{ asset_version }}"></script>
 {% endblock %}

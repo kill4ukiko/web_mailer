@@ -22,6 +22,7 @@
   <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='clicks') }}"><span class="card-value">{{ campaign.stats.get('clicks', 0) }}</span><span class="card-label">Clicks</span></a>
   <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='bounces') }}"><span class="card-value">{{ campaign.stats.get('bounces', 0) }}</span><span class="card-label">Bounces</span></a>
   <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='complained') }}"><span class="card-value">{{ campaign.stats.get('complaints', 0) }}</span><span class="card-label">Complaints</span></a>
+  <a class="card" href="{{ url_for('web.campaign_report', campaign_id=campaign.id, category='unsubscribed') }}"><span class="card-value">{{ campaign.stats.get('unsubscribes', 0) }}</span><span class="card-label">Unsubscribes</span></a>
 </section>
 
 <section>

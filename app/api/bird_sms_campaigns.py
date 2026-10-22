@@ -1,4 +1,4 @@
-﻿"""SMS campaign creation, controls, reports and reuse endpoints."""
+"""SMS campaign creation, controls, reports and reuse endpoints."""
 from __future__ import annotations
 
 import csv
@@ -17,6 +17,7 @@ from app.schemas.bird_sms_campaigns import (
     BirdCampaignReuse,
     BirdCampaignUpdate,
 )
+from app.extensions import limiter
 
 bp = Blueprint("bird_sms_campaigns", __name__, url_prefix="/api/bird-sms/campaigns")
 
@@ -71,9 +72,9 @@ def _dispatch(campaign_id: str):
 
     if (get_settings().send_mode or "celery").lower() == "cron":
         return
-    from app.workers.tasks_bird_sms import send_sms_campaign
+    from app.workers.tasks_bird_sms import send_bird_sms_campaign
 
-    send_sms_campaign.delay(campaign_id)
+    send_bird_sms_campaign.delay(campaign_id)
 
 
 def _other_high_priority(supabase: BirdSmsStore, exclude_id: str) -> list[dict]:
@@ -104,7 +105,7 @@ def _resolve(supabase: BirdSmsStore, from_number: str | None) -> tuple[str, str 
 
 @bp.post("")
 def create_campaign():
-    """POST /api/sms/campaigns â€” create an SMS campaign draft."""
+    """POST /api/sms/campaigns — create an SMS campaign draft."""
     try:
         payload = BirdCampaignCreate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -189,7 +190,7 @@ def attach_recipients(
 
 @bp.get("")
 def list_campaigns():
-    """GET /api/sms/campaigns â€” list SMS campaigns (optionally by status)."""
+    """GET /api/sms/campaigns — list SMS campaigns (optionally by status)."""
     status_filter = request.args.get("status")
     query = (
         get_bird_store().client.table("bird_sms_campaigns")
@@ -202,7 +203,7 @@ def list_campaigns():
 
 @bp.get("/<campaign_id>")
 def get_campaign(campaign_id: str):
-    """GET /api/sms/campaigns/<id> â€” status, stats and content."""
+    """GET /api/sms/campaigns/<id> — status, stats and content."""
     campaign = get_bird_store().get_sms_campaign(campaign_id)
     if campaign is None:
         return jsonify({"error": "campaign not found"}), 404
@@ -211,7 +212,7 @@ def get_campaign(campaign_id: str):
 
 @bp.patch("/<campaign_id>")
 def update_campaign(campaign_id: str):
-    """PATCH /api/sms/campaigns/<id> â€” edit an editable campaign."""
+    """PATCH /api/sms/campaigns/<id> — edit an editable campaign."""
     try:
         payload = BirdCampaignUpdate.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -253,7 +254,7 @@ def update_campaign(campaign_id: str):
 
 @bp.delete("/<campaign_id>")
 def delete_campaign(campaign_id: str):
-    """DELETE /api/sms/campaigns/<id> â€” remove a campaign."""
+    """DELETE /api/sms/campaigns/<id> — remove a campaign."""
     supabase = get_bird_store()
     campaign = supabase.get_sms_campaign(campaign_id)
     if campaign is None:
@@ -324,6 +325,7 @@ def campaign_action(campaign_id: str):
 
 
 @bp.post("/<campaign_id>/send-test")
+@limiter.limit("10 per minute")
 def send_test(campaign_id: str):
     """POST /api/bird-sms/campaigns/<id>/send-test {to} - one real Bird SMS."""
     from app.core.bird_sms import BirdSmsClient
@@ -375,7 +377,7 @@ def send_test(campaign_id: str):
 
 @bp.get("/<campaign_id>/lists")
 def get_campaign_lists(campaign_id: str):
-    """GET /api/sms/campaigns/<id>/lists â€” targeted SMS lists."""
+    """GET /api/sms/campaigns/<id>/lists — targeted SMS lists."""
     supabase = get_bird_store()
     if supabase.get_sms_campaign(campaign_id) is None:
         return jsonify({"error": "campaign not found"}), 404
@@ -571,7 +573,7 @@ def _reuse_counts(supabase, campaign_id: str) -> dict:
 
 @bp.get("/<campaign_id>/reuse-preview")
 def reuse_preview(campaign_id: str):
-    """GET /api/sms/campaigns/<id>/reuse-preview â€” counts per reuse mode."""
+    """GET /api/sms/campaigns/<id>/reuse-preview — counts per reuse mode."""
     supabase = get_bird_store()
     if supabase.get_sms_campaign(campaign_id) is None:
         return jsonify({"error": "campaign not found"}), 404
@@ -580,7 +582,7 @@ def reuse_preview(campaign_id: str):
 
 @bp.post("/<campaign_id>/clone")
 def clone_campaign(campaign_id: str):
-    """POST /api/sms/campaigns/<id>/clone  {mode, name?} â€” copy into a draft."""
+    """POST /api/sms/campaigns/<id>/clone  {mode, name?} — copy into a draft."""
     try:
         payload = BirdCampaignReuse.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -635,7 +637,7 @@ def clone_campaign(campaign_id: str):
 
 @bp.post("/<campaign_id>/resend")
 def resend_campaign(campaign_id: str):
-    """POST /api/sms/campaigns/<id>/resend  {mode} â€” resend the same campaign."""
+    """POST /api/sms/campaigns/<id>/resend  {mode} — resend the same campaign."""
     try:
         payload = BirdCampaignReuse.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:

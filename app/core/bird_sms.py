@@ -1,4 +1,4 @@
-﻿"""Bird SMS API client (current Bird platform, bk_ workspace keys).
+"""Bird SMS API client (current Bird platform, bk_ workspace keys).
 
 Transport only: pacing, claims, suppression and status bookkeeping live in the
 worker layer. Bird sends one recipient per request and returns 202 Accepted;

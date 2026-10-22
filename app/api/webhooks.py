@@ -23,6 +23,7 @@ EVENT_MAP = {
     "soft_bounce": "soft_bounce",
     "complaint": "complained",
     "unsubscribe": "unsubscribed",
+    "failed": "failed",
 }
 
 STATS_FIELD_MAP = {
@@ -33,6 +34,13 @@ STATS_FIELD_MAP = {
     "soft_bounce": "bounces",
     "complaint": "complaints",
     "unsubscribe": "unsubscribes",
+    "failed": "failed",
+}
+
+# Bounces also keep their own counter so hard and soft bounces are not mixed.
+SPLIT_STATS_FIELD_MAP = {
+    "hard_bounce": "hard_bounce",
+    "soft_bounce": "soft_bounce",
 }
 
 # Event -> contact lifecycle label (badges/filters on the contacts page).
@@ -44,6 +52,7 @@ LIFECYCLE_MAP = {
     "soft_bounce": "soft_bounce",
     "complaint": "complained",
     "unsubscribe": "unsubscribed",
+    "failed": "failed",
 }
 
 # Event -> contact_status used when globally suppressing a contact.
@@ -66,6 +75,8 @@ _EVENT_ALIASES = {
     "unique_proxy_open": "opened",
     "deferred": "deferred",
     "request": "request",
+    "error": "failed",
+    "invalid": "hard_bounce",
 }
 
 
@@ -154,6 +165,9 @@ def brevo_webhook():
 
             if event.campaign_id and stats_field:
                 supabase.increment_stats(event.campaign_id, stats_field)
+                split_field = SPLIT_STATS_FIELD_MAP.get(event.event)
+                if split_field:
+                    supabase.increment_stats(event.campaign_id, split_field)
 
             # Record the newest outcome on the contact for badge/filter UI.
             if lifecycle and event.email:

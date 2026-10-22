@@ -17,6 +17,7 @@ from app.schemas.sms_campaigns import (
     SmsCampaignReuse,
     SmsCampaignUpdate,
 )
+from app.extensions import limiter
 
 bp = Blueprint("sms_campaigns", __name__, url_prefix="/api/sms/campaigns")
 
@@ -322,6 +323,7 @@ def campaign_action(campaign_id: str):
 
 
 @bp.post("/<campaign_id>/send-test")
+@limiter.limit("10 per minute")
 def send_test(campaign_id: str):
     """POST /api/sms/campaigns/<id>/send-test  {to} — send one real SMS."""
     from app.core.sms import SmsClient

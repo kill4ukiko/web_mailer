@@ -1,13 +1,15 @@
-﻿"""Apply the sql/*.sql migrations to the database in DATABASE_URL.
+"""Apply the sql/*.sql migrations to the database in DATABASE_URL.
 
 Usage:
-    python -m scripts.apply_sql                 # apply all migrations in order
+    python -m scripts.apply_sql                 # apply pending migrations
     python -m scripts.apply_sql --only 11_campaign_reuse.sql
+    python -m scripts.apply_sql --force         # re-run everything
 
-Migration files are expected to be idempotent where possible. Older files
-(e.g. 01_schema.sql) create types/tables unconditionally, so re-running is
-tolerant of "already exists" errors: each file is applied independently and a
-failure is reported without aborting the remaining files.
+Applied filenames are recorded in ``schema_migrations`` so a redeploy only runs
+new files. Migration files are expected to be idempotent where possible; older
+files (e.g. 01_schema.sql) create types/tables unconditionally, so re-running
+is tolerated: each file is applied independently and a failure is reported
+without aborting the remaining files.
 """
 from __future__ import annotations
 
@@ -33,14 +35,30 @@ ORDER = [
     "16_sms.sql",
     "17_telegram_sections.sql",
     "18_bird_sms.sql",
+    "19_atomic_stats.sql",
 ]
 
+_TRACKING_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename TEXT PRIMARY KEY,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)
+"""
 
-def apply_migrations(files: list[str] | None = None, log=print) -> list[str]:
-    """Apply the given (or all ordered) migrations; return failed filenames.
+
+def _applied_migrations(cur) -> set[str]:
+    cur.execute("SELECT filename FROM schema_migrations")
+    return {row[0] for row in cur.fetchall()}
+
+
+def apply_migrations(
+    files: list[str] | None = None, log=print, force: bool = False
+) -> list[str]:
+    """Apply pending migrations; return failed filenames.
 
     Each file runs independently on one connection so a single "already
-    exists" error does not abort the remaining files.
+    exists" error does not abort the remaining files. Files already recorded in
+    ``schema_migrations`` are skipped unless ``force`` is set.
     """
     import psycopg2
 
@@ -55,14 +73,25 @@ def apply_migrations(files: list[str] | None = None, log=print) -> list[str]:
     conn = psycopg2.connect(database_url)
     try:
         with conn.cursor() as cur:
+            cur.execute(_TRACKING_TABLE_SQL)
+            conn.commit()
+            applied = _applied_migrations(cur)
             for filename in filenames:
                 path = SQL_DIR / filename
                 if not path.exists():
                     log(f"skip (missing): {filename}")
                     continue
+                if filename in applied and not force:
+                    log(f"skip (already applied): {filename}")
+                    continue
                 log(f"applying {filename} ...")
                 try:
                     cur.execute(path.read_text(encoding="utf-8-sig"))
+                    cur.execute(
+                        "INSERT INTO schema_migrations (filename) VALUES (%s) "
+                        "ON CONFLICT (filename) DO UPDATE SET applied_at = NOW()",
+                        (filename,),
+                    )
                     conn.commit()
                 except Exception as exc:  # noqa: BLE001 - report and continue
                     conn.rollback()
@@ -80,11 +109,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--only", nargs="*", default=None,
                         help="apply only these migration file(s)")
+    parser.add_argument("--force", action="store_true",
+                        help="re-run files even if schema_migrations lists them")
     args = parser.parse_args()
     try:
-        failures = apply_migrations(args.only)
-    except RuntimeError as exc:
-        print(exc)
+        failures = apply_migrations(args.only, force=args.force)
+    except Exception as exc:  # noqa: BLE001 - connection/config errors
+        print(f"migration failed: {exc}")
         return 1
     if failures:
         print(f"completed with warnings for: {', '.join(failures)}")

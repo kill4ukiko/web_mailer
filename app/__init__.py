@@ -1,7 +1,9 @@
-﻿"""Flask application factory for the web_mailer platform."""
+"""Flask application factory for the web_mailer platform."""
 from __future__ import annotations
 
+import hashlib
 import time
+from pathlib import Path
 
 from flask import Flask, jsonify, redirect, request, url_for
 
@@ -18,9 +20,25 @@ _PUBLIC_ENDPOINTS = {
     "auth.me",
 }
 
+# Inbound public blueprints that must stay reachable even if the rate-limiter
+# datastore is down (Flask-Limiter is configured to swallow storage errors).
+_GUARD_EXEMPT_PREFIXES = (
+    "static",
+    "tracking.",
+    "webhooks.",
+    "sms_webhooks.",
+    "bird_sms_webhooks.",
+)
+
 # Cached Redis reachability (checked at most once per _REDIS_CHECK_TTL seconds).
 _REDIS_CHECK_TTL = 5.0
 _redis_check: dict[str, float | bool] = {"ok": True, "at": 0.0}
+
+
+def _redis_guard_exempt(endpoint: str | None) -> bool:
+    if endpoint in _PUBLIC_ENDPOINTS:
+        return True
+    return bool(endpoint) and endpoint.startswith(_GUARD_EXEMPT_PREFIXES)
 
 
 def create_app(config_object: object | None = None) -> Flask:
@@ -32,6 +50,7 @@ def create_app(config_object: object | None = None) -> Flask:
         DEBUG=settings.debug,
         JSON_SORT_KEYS=False,
         BASE_URL=settings.base_url.rstrip("/"),
+        TRUST_CLOUDFLARE_CLIENT_IP=settings.trust_cloudflare_client_ip,
         SETTINGS=settings,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -39,6 +58,10 @@ def create_app(config_object: object | None = None) -> Flask:
         PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 14,
     )
     app.config["RATELIMIT_STORAGE_URI"] = settings.ratelimit_storage_uri
+    # Inbound public endpoints (unsubscribe, webhooks, pixels) must keep working
+    # if the rate-limiter datastore is briefly unavailable; the guard below still
+    # fails closed for everything a human or the dashboard can mutate.
+    app.config["RATELIMIT_SWALLOW_ERRORS"] = True
 
     if config_object is not None:
         app.config.from_object(config_object)
@@ -47,13 +70,93 @@ def create_app(config_object: object | None = None) -> Flask:
     if app.config.get("TESTING"):
         app.config["WTF_CSRF_ENABLED"] = False
 
+    validate_startup_config(app)
+
     register_extensions(app)
     register_blueprints(app)
     register_auth_guard(app)
     register_redis_guard(app)
+    register_security_headers(app)
     register_context(app)
 
     return app
+
+
+_PLACEHOLDER_SECRETS = {"", "change-me", "changeme", "secret", "dev"}
+
+
+def validate_startup_config(app: Flask) -> list[str]:
+    """Fail fast on dangerous production misconfiguration.
+
+    In development/testing every problem is only logged so the app stays usable;
+    with ``DEBUG=false`` and ``TESTING=false`` (a real deployment) a broken
+    configuration raises instead of silently sending with a placeholder secret
+    or no database credentials.
+    """
+    settings = app.config["SETTINGS"]
+    problems: list[str] = []
+
+    secret = str(settings.secret_key or "").strip()
+    if len(secret) < 32 or secret.lower() in _PLACEHOLDER_SECRETS:
+        problems.append("SECRET_KEY must be a long random value")
+    if not str(settings.supabase_url or "").strip():
+        problems.append("SUPABASE_URL is not set")
+    if not str(settings.supabase_service_role_key or "").strip():
+        problems.append("SUPABASE_SERVICE_ROLE_KEY is not set")
+    if (settings.send_mode or "celery").lower() == "celery" and not str(
+        settings.celery_broker_url or ""
+    ).strip():
+        problems.append("CELERY_BROKER_URL is required in celery send mode")
+
+    # A public HTTPS deployment is reachable by anyone: it must not run without
+    # sign-in, and the browser needs the anon key for Supabase Auth.
+    public_url = str(settings.public_base_url or settings.base_url or "")
+    if public_url.lower().startswith("https://"):
+        if not settings.auth_required:
+            problems.append(
+                "AUTH_REQUIRED must be true for a public HTTPS deployment"
+            )
+        if not str(settings.supabase_anon_key or "").strip():
+            problems.append(
+                "SUPABASE_ANON_KEY is required for sign-in on a public deployment"
+            )
+
+    app.config["STARTUP_WARNINGS"] = problems
+    if not problems:
+        return problems
+
+    message = "invalid configuration: " + "; ".join(problems)
+    if app.config.get("TESTING") or settings.debug:
+        app.logger.warning(message)
+    else:
+        raise RuntimeError(message)
+    return problems
+
+
+def register_security_headers(app: Flask) -> None:
+    """Attach conservative security headers to every response.
+
+    A strict Content-Security-Policy is intentionally not set globally: the
+    editor and login pages load Quill/Supabase from a CDN, so a CSP would have
+    to whitelist third-party hosts (and would be easy to get wrong). Endpoints
+    that render untrusted pages (unsubscribe) set their own stricter CSP.
+    """
+
+    https_site = _public_base_is_https(app.config["SETTINGS"])
+
+    @app.after_request
+    def _security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        if https_site:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
 
 
 def _public_base_is_https(settings) -> bool:
@@ -169,7 +272,7 @@ def register_redis_guard(app: Flask) -> None:
             return None
 
         endpoint = request.endpoint
-        if endpoint in _PUBLIC_ENDPOINTS or (endpoint or "").startswith("static"):
+        if _redis_guard_exempt(endpoint):
             return None
 
         now = time.time()
@@ -195,6 +298,26 @@ def register_redis_guard(app: Flask) -> None:
         return None
 
 
+def _static_version(app: Flask) -> str:
+    """Short content/mtime fingerprint used to cache-bust CSS/JS URLs."""
+    cached = app.extensions.get("static_version")
+    if cached:
+        return cached
+    digest = hashlib.sha1()
+    root = Path(app.static_folder or ".")
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        digest.update(f"{path.name}:{stat.st_mtime_ns}:{stat.st_size}".encode())
+    version = digest.hexdigest()[:10]
+    app.extensions["static_version"] = version
+    return version
+
+
 def register_context(app: Flask) -> None:
     from app.api import auth
 
@@ -203,4 +326,5 @@ def register_context(app: Flask) -> None:
         return {
             "auth_user": auth.current_user(),
             "auth_required": auth.auth_required(),
+            "asset_version": _static_version(app),
         }

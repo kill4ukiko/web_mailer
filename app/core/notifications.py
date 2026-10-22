@@ -1,4 +1,4 @@
-﻿"""High-level Telegram notifications for campaign lifecycle events.
+"""High-level Telegram notifications for campaign lifecycle events.
 
 Thin, dependency-light wrappers around the Telegram client so workers can alert
 an operator on meaningful events (started / completed / paused / failed)
@@ -11,10 +11,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 _ICONS = {
-    "info": "â„¹ï¸",
-    "success": "âœ…",
-    "warning": "âš ï¸",
-    "error": "ðŸš¨",
+    "info": "ℹ️",
+    "success": "✅",
+    "warning": "⚠️",
+    "error": "🚨",
 }
 
 
@@ -25,11 +25,11 @@ def notify(title: str, lines: list[str] | None = None, level: str = "info", sect
     disrupt the caller's work.
     """
     try:
-        from app.core.telegram import get_telegram
+        from app.core.telegram import escape_markdown, get_telegram
 
-        icon = _ICONS.get(level, "â„¹ï¸")
+        icon = _ICONS.get(level, "ℹ️")
         body = "\n".join(lines or [])
-        text = f"{icon} *{title}*"
+        text = f"{icon} *{escape_markdown(title)}*"
         if body:
             text = f"{text}\n{body}"
         try:
@@ -54,7 +54,9 @@ def notify_campaign(campaign: dict, event: str, extra: list[str] | None = None) 
         "cancelled": "warning",
         "unsubscribed": "warning",
     }
-    name = campaign.get("name") or campaign.get("id")
+    from app.core.telegram import escape_markdown
+
+    name = escape_markdown(campaign.get("name") or campaign.get("id") or "")
     lines = [
         f"Campaign: {name}",
         f"ID: `{campaign.get('id')}`",
@@ -75,7 +77,9 @@ def notify_sms_campaign(campaign: dict, event: str, extra: list[str] | None = No
         "cancelled": "warning",
         "unsubscribed": "warning",
     }
-    name = campaign.get("name") or campaign.get("id")
+    from app.core.telegram import escape_markdown
+
+    name = escape_markdown(campaign.get("name") or campaign.get("id") or "")
     lines = [
         f"SMS campaign: {name}",
         f"ID: `{campaign.get('id')}`",
@@ -103,7 +107,7 @@ def notify_reputation(
     """
     event_type = getattr(event, "event", None) or ""
     label = _REPUTATION_LABELS.get(event_type, event_type)
-    email = getattr(event, "email", None) or "â€”"
+    email = getattr(event, "email", None) or "—"
     campaign_id = campaign.get("id") or getattr(event, "campaign_id", None) or "none"
 
     try:
@@ -121,17 +125,19 @@ def notify_reputation(
     bounce_rate = (bounces / sent * 100) if sent else 0.0
     complaint_rate = (complaints / sent * 100) if sent else 0.0
 
+    from app.core.telegram import escape_markdown
+
     lines = [
-        f"Email: {email}",
-        f"Campaign: {campaign.get('name') or campaign_id}",
+        f"Email: {escape_markdown(email)}",
+        f"Campaign: {escape_markdown(campaign.get('name') or campaign_id)}",
         f"Reason: {label}" + (" (suppressed)" if suppressed else " (kept active)"),
-        f"Bounce rate: {bounce_rate:.2f}% Â· Complaint rate: {complaint_rate:.2f}%",
+        f"Bounce rate: {bounce_rate:.2f}% · Complaint rate: {complaint_rate:.2f}%",
     ]
     url = getattr(event, "click_url", None)
     if url:
         lines.append(f"Link: {url}")
     level = "error" if event_type in ("hard_bounce", "complaint") else "warning"
-    return notify(f"{label} â€” deliverability alert", lines, level)
+    return notify(f"{label} — deliverability alert", lines, level)
 
 
 def notify_bird_sms_campaign(campaign: dict, event: str, extra: list[str] | None = None) -> bool:
@@ -141,7 +147,9 @@ def notify_bird_sms_campaign(campaign: dict, event: str, extra: list[str] | None
         "paused": "warning", "held": "warning", "failed": "error",
         "cancelled": "warning", "unsubscribed": "warning",
     }
-    name = campaign.get("name") or campaign.get("id")
+    from app.core.telegram import escape_markdown
+
+    name = escape_markdown(campaign.get("name") or campaign.get("id") or "")
     lines = [f"Bird SMS campaign: {name}", f"ID: `{campaign.get('id')}`"]
     lines.extend(extra or [])
     return notify(f"Bird SMS campaign {event}", lines, levels.get(event, "info"), section="bird_sms")

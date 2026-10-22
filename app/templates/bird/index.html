@@ -1,4 +1,4 @@
-﻿{% extends "bird/base.html" %}
+{% extends "bird/base.html" %}
 {% block title %}Bird SMS &middot; webmailer{% endblock %}
 {% block content %}
 <div class="section-head">
@@ -14,38 +14,39 @@
 {% endif %}
 
 <section class="cards">
-  <div class="card"><span class="card-value">{{ totals.contacts }}</span><span class="card-label">Bird contacts</span></div>
-  <div class="card"><span class="card-value">{{ totals.active }}</span><span class="card-label">Sendable</span></div>
-  <div class="card"><span class="card-value">{{ totals.lists }}</span><span class="card-label">Lists</span></div>
-  <div class="card {% if totals.sending %}card-live{% endif %}"><span class="card-value">{{ totals.sending }}</span><span class="card-label">Sending now</span></div>
+  <div class="card"><span class="card-value">{{ totals.contacts }}</span><span class="card-label">Bird contacts <button type="button" class="info-icon" data-info="bird_overview_contacts">i</button></span></div>
+  <div class="card"><span class="card-value">{{ totals.active }}</span><span class="card-label">Sendable <button type="button" class="info-icon" data-info="bird_overview_sendable">i</button></span></div>
+  <div class="card"><span class="card-value">{{ totals.lists }}</span><span class="card-label">Lists <button type="button" class="info-icon" data-info="bird_overview_lists">i</button></span></div>
+  <div class="card {% if totals.sending %}card-live{% endif %}"><span class="card-value">{{ totals.sending }}</span><span class="card-label">Sending now <button type="button" class="info-icon" data-info="bird_overview_sending">i</button></span></div>
 </section>
 
 <section class="panel sms-credit-panel">
   <div class="panel-head">
-    <h2>Today&rsquo;s Bird spend</h2>
+    <h2>Today&rsquo;s Bird spend <button type="button" class="info-icon" data-info="bird_spend">i</button></h2>
     <span class="badge badge-priority">{{ settings.get('bird_region') or 'us1' }}</span>
+    <button type="button" class="info-icon" data-info="bird_region">i</button>
   </div>
   <div class="sms-credit-grid">
     <div>
       <span class="card-value">${{ '%.2f'|format(account.spent_today) }}</span>
-      <span class="card-label">estimated spend today</span>
+      <span class="card-label">estimated spend today <button type="button" class="info-icon" data-info="bird_spend">i</button></span>
       <p class="muted small">Calculated from delivery cost events and local segment estimates.</p>
       {% if account.low %}<p class="notice small">Approaching the daily Bird budget.</p>{% endif %}
     </div>
     <div class="sms-plan-facts">
-      <div><span class="muted small">Daily budget</span><strong>${{ '%.2f'|format(account.daily_budget) }}</strong></div>
-      <div><span class="muted small">Remaining</span><strong>{% if account.remaining is not none %}${{ '%.2f'|format(account.remaining) }}{% else %}&mdash;{% endif %}</strong></div>
-      <div><span class="muted small">Rate</span><strong>{{ settings.get('send_rate_per_minute') }}/min</strong></div>
-      <div><span class="muted small">Hourly cap</span><strong>{{ settings.get('max_recipients_per_hour') }}</strong></div>
-      <div><span class="muted small">Daily cap</span><strong>{{ settings.get('max_recipients_per_day') }}</strong></div>
-      <div><span class="muted small">Sender</span><strong>{{ settings.get('from_number') or 'not set' }}</strong></div>
+      <div><span class="muted small">Daily budget <button type="button" class="info-icon" data-info="bird_daily_budget">i</button></span><strong>${{ '%.2f'|format(account.daily_budget) }}</strong></div>
+      <div><span class="muted small">Remaining <button type="button" class="info-icon" data-info="bird_remaining_budget">i</button></span><strong>{% if account.remaining is not none %}${{ '%.2f'|format(account.remaining) }}{% else %}&mdash;{% endif %}</strong></div>
+      <div><span class="muted small">Rate <button type="button" class="info-icon" data-info="bird_rate_caps">i</button></span><strong>{{ settings.get('send_rate_per_minute') }}/min</strong></div>
+      <div><span class="muted small">Hourly cap <button type="button" class="info-icon" data-info="bird_caps">i</button></span><strong>{{ settings.get('max_recipients_per_hour') }}</strong></div>
+      <div><span class="muted small">Daily cap <button type="button" class="info-icon" data-info="bird_caps">i</button></span><strong>{{ settings.get('max_recipients_per_day') }}</strong></div>
+      <div><span class="muted small">Sender <button type="button" class="info-icon" data-info="bird_sender">i</button></span><strong>{{ settings.get('from_number') or 'not set' }}</strong></div>
     </div>
   </div>
   <p class="muted small">Bird wallet balances need an organization OAuth token with <code>org:billing:read</code>; this panel intentionally uses local spend instead.</p>
 </section>
 
 <section>
-  <div class="section-head"><h2>Campaign status</h2>
+  <div class="section-head"><h2>Campaign status <button type="button" class="info-icon" data-info="bird_campaign_status">i</button></h2>
     <a class="link small" href="{{ url_for('web.bird_sms_settings_page') }}">Bird settings</a></div>
   <div class="pill-row">
     {% for status in status_order %}<span class="badge badge-{{ status }}">{{ status }}: {{ status_counts.get(status, 0) }}</span>{% endfor %}
@@ -56,7 +57,7 @@
   <div class="section-head"><h2>Recent Bird SMS campaigns</h2></div>
   {% if campaigns %}
   <table class="table">
-    <thead><tr><th>Name</th><th>Mode</th><th>Status</th><th class="num">Sent</th><th class="num">Delivered</th><th class="num">Failed</th><th class="num">Cost</th><th>Created</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Mode <button type="button" class="info-icon" data-info="bird_message_mode">i</button></th><th>Status <button type="button" class="info-icon" data-info="bird_campaign_status">i</button></th><th class="num">Sent</th><th class="num">Delivered</th><th class="num">Failed</th><th class="num">Cost <button type="button" class="info-icon" data-info="bird_cost_segment">i</button></th><th>Created</th><th></th></tr></thead>
     <tbody>
       {% for c in campaigns %}{% set st = c.stats or {} %}
       <tr>
@@ -79,7 +80,7 @@
 </section>
 
 <section class="panel">
-  <h2>Isolation</h2>
+  <h2>Isolation <button type="button" class="info-icon" data-info="bird_isolation">i</button></h2>
   <p class="muted">Bird contacts, templates, campaigns and delivery events live in their own tables. Nothing here reads or writes Brevo SMS or email data.</p>
 </section>
 {% endblock %}

@@ -1,13 +1,13 @@
-﻿{% extends "bird/base.html" %}
+{% extends "bird/base.html" %}
 {% block title %}Bird SMS templates &middot; webmailer{% endblock %}
 {% block content %}
 <h1>Bird SMS templates</h1>
 <p class="muted">Saved message bodies for campaigns plus read-only Bird template slugs from the template catalogue.</p>
 
 <section class="panel">
-  <div class="panel-head"><h2>Saved templates</h2><button type="button" class="btn btn-sm" id="bird-template-new-btn">New template</button></div>
+  <div class="panel-head"><h2>Saved templates <button type="button" class="info-icon" data-info="bird_saved_templates">i</button></h2><button type="button" class="btn btn-sm" id="bird-template-new-btn">New template</button></div>
   <table class="table" id="bird-templates-table">
-    <thead><tr><th>Name</th><th>Category</th><th>Content</th><th>Updated</th><th></th></tr></thead>
+    <thead><tr><th>Name <button type="button" class="info-icon" data-info="bird_template_name">i</button></th><th>Category <button type="button" class="info-icon" data-info="bird_category">i</button></th><th>Content <button type="button" class="info-icon" data-info="bird_template_content">i</button></th><th>Updated</th><th></th></tr></thead>
     <tbody>
       {% for t in templates %}
       <tr data-bird-template-id="{{ t.id }}">
@@ -31,8 +31,8 @@
   <form id="bird-template-form" class="form">
     <input type="hidden" name="id" value="">
     <div class="grid-2">
-      <label>Template name <input type="text" name="name" required maxlength="255"></label>
-      <label>Category
+      <label>Template name <button type="button" class="info-icon" data-info="bird_template_name">i</button> <input type="text" name="name" required maxlength="255"></label>
+      <label>Category <button type="button" class="info-icon" data-info="bird_category">i</button>
         <select name="category">
           <option value="transactional">Transactional</option>
           <option value="marketing">Marketing</option>
@@ -41,14 +41,15 @@
         </select>
       </label>
     </div>
-    <label>Message body
+    <label>Message body <button type="button" class="info-icon" data-info="bird_template_content">i</button>
       <textarea name="content" rows="6" required placeholder="Hi {{ '{{first_name}}' }}, your order is ready."></textarea>
       <small class="muted">Merge tags: {{ '{{first_name}}' }}, {{ '{{last_name}}' }}, {{ '{{phone}}' }}. Bird caps a message at 12 segments.</small>
     </label>
-    <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code"> Append STOP line</span></label>
+    <label class="checkbox-label"><span class="checkbox-row"><input type="checkbox" name="include_stop_code"> Append STOP line <button type="button" class="info-icon" data-info="bird_include_stop">i</button></span></label>
     <div class="form-actions">
       <button type="submit" class="btn btn-primary">Save template</button>
       <button type="button" class="btn" id="bird-template-preview-btn">Preview cost</button>
+      <button type="button" class="info-icon" data-info="bird_template_preview">i</button>
       <button type="button" class="btn" id="bird-template-reset-btn">Clear</button>
       <span id="bird-template-status" class="muted"></span>
     </div>
@@ -61,13 +62,13 @@
 
 <section class="panel">
   <div class="panel-head">
-    <h2>Bird template catalogue</h2>
+    <h2>Bird template catalogue <button type="button" class="info-icon" data-info="bird_template_catalogue">i</button></h2>
     <button type="button" class="btn btn-sm" id="bird-catalog-refresh">Refresh</button>
   </div>
   {% if catalog_error %}<p class="notice small">{{ catalog_error }}</p>{% endif %}
   <p class="muted small">Catalogue reads need a Bird key with the <code>sms_management</code> scope. If unavailable, enter the slug manually in the campaign editor.</p>
   <table class="table">
-    <thead><tr><th>Slug</th><th>Name</th><th>Language</th><th>Category</th></tr></thead>
+    <thead><tr><th>Slug <button type="button" class="info-icon" data-info="bird_template_slug">i</button></th><th>Name <button type="button" class="info-icon" data-info="bird_template_name">i</button></th><th>Language <button type="button" class="info-icon" data-info="bird_template_language">i</button></th><th>Category <button type="button" class="info-icon" data-info="bird_category">i</button></th></tr></thead>
     <tbody>
       {% for item in catalogue %}
       <tr><td><code>{{ item.slug }}</code></td><td>{{ item.name or '' }}</td><td>{{ item.language or '' }}</td><td>{{ item.category or '' }}</td></tr>

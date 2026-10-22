@@ -64,21 +64,24 @@
   to the allowed redirect URLs. Only emails listed in <code>AUTH_ALLOWED_EMAILS</code>
   (comma-separated) may sign in; an empty allowlist denies everyone.</p>
 
-<h2 id="deploy">Self-hosting (cPanel / no terminal)</h2>
-<p class="muted">On a cPanel host without SSH/Terminal the app runs under Passenger and uses
-  system <strong>cron</strong> instead of Celery:</p>
+<h2 id="deploy">Self-hosting (Windows Server / RDP)</h2>
+<p class="muted">The supported deployment runs every process under one supervisor
+  (waitress + Celery worker/beat + Redis + cloudflared):</p>
 <ol class="about-steps">
-  <li><strong>Setup Python App</strong> in cPanel: point the app root at this
-      repository and the startup file at <code>passenger_wsgi.py</code>, then use
-      <em>Run Pip Install</em> with <code>requirements.txt</code>.</li>
-  <li><strong>Create <code>.env</code></strong> via File Manager (or the app's
-      environment-variable UI) and set <code>SEND_MODE=cron</code>,
-      <code>RATELIMIT_STORAGE_URI=memory://</code>, and the Supabase/Brevo keys.</li>
-  <li><strong>Cron Jobs</strong>: add a one-off
-      <code>python -m app.cron bootstrap</code> to apply migrations and seed
-      settings, then a recurring job (every minute)
-      <code>python -m app.cron tick</code> to dispatch and send campaigns.</li>
+  <li><strong>Install</strong> Python 3.11+, <code>requirements.txt</code>, Redis/Memurai
+      and <code>cloudflared</code>; see <code>deploy/windows/README.md</code>.</li>
+  <li><strong>Create <code>.env</code></strong> with the Supabase/Brevo/Bird keys and
+      <code>PUBLIC_BASE_URL</code>; keep the four Redis URLs on separate database
+      numbers (the defaults already do).</li>
+  <li><strong>Migrate and run</strong>:
+      <code>python -m scripts.apply_sql</code> then
+      <code>python scripts/run_stack.py</code>. Only waitress on
+      <code>127.0.0.1</code> is exposed through the tunnel.</li>
 </ol>
+<p class="muted">A Redis-less fallback exists for other hosts: set
+  <code>SEND_MODE=cron</code> and schedule
+  <code>python -m app.cron tick</code> every minute (the tick takes a lock, so
+  overlapping jobs cannot double-send).</p>
 
 <h2>Operational notes</h2>
 <ul class="about-list">

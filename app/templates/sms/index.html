@@ -1,4 +1,4 @@
-﻿{% extends "sms/base.html" %}
+{% extends "sms/base.html" %}
 {% block title %}B SMS &middot; webmailer{% endblock %}
 {% block content %}
 <div class="section-head">
@@ -36,7 +36,7 @@
 <section class="panel sms-credit-panel" id="sms-credit-panel"
          data-credits='{{ credits | tojson }}'>
   <div class="panel-head">
-    <h2>Brevo Brevo SMS plan &amp; credits</h2>
+    <h2>Brevo SMS plan &amp; credits</h2>
     <span class="badge badge-priority">{{ plan.label }}</span>
   </div>
   <div class="sms-credit-grid">
@@ -48,6 +48,8 @@
       <p class="muted small" id="sms-credit-note">
         {% if credits.get('available') %}
           {{ credits.get('credits_type') or 'SMS credits' }} &middot; cached from Brevo.
+        {% elif credits.get('lazy') %}
+          Loading the balance from Brevo&hellip;
         {% else %}
           Balance unavailable (check the Brevo API key) &mdash; the refresh button retries.
         {% endif %}

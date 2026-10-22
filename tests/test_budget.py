@@ -88,6 +88,20 @@ def test_tick_budgets_split_equally(supabase):
     assert reason is None
 
 
+def test_tick_budgets_never_exceeds_partial_headroom(supabase):
+    a = _sending(supabase, "a")
+    b = _sending(supabase, "b")
+    _mark_sent(supabase, a["id"], 99)  # 1 send of headroom, 2 campaigns
+
+    budgets, retry, reason = tick_budgets(supabase, _settings(), batch_size=500)
+
+    assert sum(budgets.values()) <= 1
+    assert budgets[a["id"]] == 0
+    assert budgets[b["id"]] == 0
+    assert retry == CAP_RETRY_SECONDS
+    assert reason is None
+
+
 def test_high_priority_takes_everything(supabase):
     a = _sending(supabase, "a")
     b = _sending(supabase, "b")

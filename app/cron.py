@@ -1,6 +1,6 @@
-﻿"""Cron-driven send engine for hosts without Redis / Celery.
+"""Cron-driven send engine for hosts without Redis / Celery.
 
-On a shared host (e.g. cPanel) there is no Celery worker or beat. Set
+On a host without Redis/Celery there is no worker or beat. Set
 ``SEND_MODE=cron`` and drive the queue with two system cron jobs::
 
     * * * * *  cd /path/to/app && python -m app.cron tick       # every minute
@@ -46,7 +46,69 @@ def _write_last_alert(value: float, name: str = "webmailer-cron.state") -> None:
         pass
 
 
+def _acquire_tick_lock(max_age_seconds: float = 900.0):
+    """Create the tick lock file; return its path or ``None`` if already held.
+
+    Cron can start a new tick while the previous one is still delivering. A
+    stale lock (worker crashed) is taken over once it is older than the sweep
+    interval so sending cannot stay blocked forever.
+    """
+    import os
+    import time
+
+    path = _state_file("webmailer-cron.lock")
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            age = time.time() - path.stat().st_mtime
+        except OSError:
+            age = max_age_seconds + 1
+        if age < max_age_seconds:
+            return None
+        try:
+            path.unlink()
+        except OSError:
+            return None
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return None
+    try:
+        os.write(fd, str(os.getpid()).encode())
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+    return path
+
+
+def _release_tick_lock(path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
 def tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
+    """Run one cron tick unless Celery mode is active or a tick is in flight."""
+    from app.config import get_settings
+
+    if (get_settings().send_mode or "celery").lower() != "cron":
+        # Prevents duplicate sends when a leftover cron entry survives a switch
+        # to the Celery worker/beat deployment.
+        return {"skipped": "send_mode is not cron"}
+
+    lock = _acquire_tick_lock()
+    if lock is None:
+        return {"skipped": "another cron tick is still running"}
+    try:
+        return _run_tick(budget_seconds)
+    finally:
+        _release_tick_lock(lock)
+
+
+def _run_tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
     """Promote and drain all channels with a fair share of the tick budget.
 
     Email used to consume the entire budget before SMS ran; Bird would then
@@ -182,6 +244,7 @@ def tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
         "bird_cycles": bird_cycles, "bird_completed": bird_completed,
         "bird_resumed_held": bird_resumed_held,
     }
+
 
 def _maybe_progress_alert(min_interval: float = PROGRESS_ALERT_INTERVAL) -> None:
     """Send a Telegram progress summary at most every ``min_interval`` seconds."""

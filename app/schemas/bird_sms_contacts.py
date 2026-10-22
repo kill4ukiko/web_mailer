@@ -1,4 +1,4 @@
-﻿"""Bird SMS contact request schemas."""
+"""Bird SMS contact request schemas."""
 from __future__ import annotations
 
 from typing import Literal

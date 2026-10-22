@@ -1,4 +1,4 @@
-﻿"""Bird SMS settings, local spend summary and template catalogue endpoints."""
+"""Bird SMS settings, local spend summary and template catalogue endpoints."""
 from __future__ import annotations
 
 from flask import Blueprint, jsonify, request
@@ -91,11 +91,24 @@ def update_settings():
     return jsonify({"settings": result, "warnings": warnings}), 200
 
 
+_SECRET_FIELDS = (
+    "bird_api_key",
+    "bird_management_api_key",
+    "bird_webhook_secret",
+    "telegram_bot_token",
+    "telegram_chat_id",
+)
+
+
 @bp.get("/settings/defaults")
 def defaults():
     from app.core.bird_sms_config import fallback_bird_settings
 
-    return jsonify({"defaults": fallback_bird_settings()}), 200
+    # Never expose credentials in a GET response (they are read-only config).
+    result = fallback_bird_settings()
+    for field in _SECRET_FIELDS:
+        result.pop(field, None)
+    return jsonify({"defaults": result}), 200
 
 
 @bp.get("/account")

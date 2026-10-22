@@ -1,4 +1,4 @@
-﻿{% extends "sms/base.html" %}
+{% extends "sms/base.html" %}
 {% block title %}B SMS settings &middot; webmailer{% endblock %}
 {% block content %}
 {% set s = settings or {} %}
@@ -24,6 +24,7 @@
   </p>
   <p class="muted small" id="sms-credit-note">
     {% if credits.get('available') %}Fetched from Brevo and cached for a few minutes.
+    {% elif credits.get('lazy') %}Loading the balance from Brevo&hellip;
     {% else %}Balance unavailable. Check the Brevo API key, then refresh.{% endif %}
   </p>
   <p class="notice small" id="sms-credit-low" {% if not credits.get('low') %}hidden{% endif %}>

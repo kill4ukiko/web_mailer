@@ -15,6 +15,22 @@ from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def is_uuid(value: object) -> bool:
+    """True when ``value`` is a canonical UUID string.
+
+    PostgREST raises ``invalid input syntax for type uuid`` for anything else,
+    which used to turn a bad tracking/unsubscribe link into a 500.
+    """
+    from uuid import UUID
+
+    try:
+        UUID(str(value))
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return True
+
+
 # Delivery-lifecycle filter -> stored ``contacts.last_recipient_status`` values.
 DELIVERY_FILTERS: dict[str, tuple[str, ...]] = {
     "sent": ("sent",),
@@ -336,14 +352,81 @@ class SupabaseWrapper:
             query = query.eq("status", status)
         return query.execute().data or []
 
-    def update_recipient(self, recipient_id: str, data: dict[str, Any]) -> None:
-        self.client.table("campaign_recipients").update(data).eq("id", recipient_id).execute()
+    def update_recipient(self, recipient_id: str, data: dict[str, Any]) -> int:
+        """Update one recipient; return how many rows actually changed.
 
-    def bulk_update_recipients(self, recipient_ids: Iterable[str], data: dict[str, Any]) -> None:
+        Callers must not report success when this returns 0 (the row may have
+        been deleted with its campaign).
+        """
+        result = (
+            self.client.table("campaign_recipients")
+            .update(data)
+            .eq("id", recipient_id)
+            .execute()
+        )
+        return len(result.data or [])
+
+    def get_recipient_unsubscribe_context(
+        self, recipient_id: str, strict: bool = False
+    ) -> dict[str, Any] | None:
+        """Return the recipient status and linked contact email for opt-outs.
+
+        A malformed id returns ``None`` instead of raising PostgREST's
+        ``invalid input syntax for type uuid`` error. Pass ``strict=True`` when
+        the caller must distinguish "not found" from a transient lookup failure
+        (unsubscribe flows use this to show an honest retry page instead of
+        claiming the subscription does not exist).
+        """
+        try:
+            rows = (
+                self.client.table("campaign_recipients")
+                .select("id,status,contact_id,campaign_id")
+                .eq("id", recipient_id)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if not rows:
+                return None
+            row = rows[0]
+            email = None
+            contact_id = row.get("contact_id")
+            if contact_id:
+                contacts = (
+                    self.client.table("contacts")
+                    .select("email")
+                    .eq("id", contact_id)
+                    .limit(1)
+                    .execute()
+                    .data
+                )
+                if contacts:
+                    email = contacts[0].get("email")
+            return {
+                "status": row.get("status"),
+                "contact_id": contact_id,
+                "campaign_id": row.get("campaign_id"),
+                "email": email,
+            }
+        except Exception as exc:  # noqa: BLE001 - malformed id / transient DB error
+            if strict:
+                raise
+            logger.warning(
+                "unsubscribe context lookup failed for %r: %s", recipient_id, exc
+            )
+            return None
+
+    def bulk_update_recipients(self, recipient_ids: Iterable[str], data: dict[str, Any]) -> int:
         ids = list(recipient_ids)
         if not ids:
-            return
-        self.client.table("campaign_recipients").update(data).in_("id", ids).execute()
+            return 0
+        result = (
+            self.client.table("campaign_recipients")
+            .update(data)
+            .in_("id", ids)
+            .execute()
+        )
+        return len(result.data or [])
 
     # ------------------------------------------------------------------ #
     # Stored procedures (atomic operations)
@@ -421,7 +504,31 @@ class SupabaseWrapper:
             "complaints": stats.get("complaints", 0),
         }
 
+    # Counters that live in campaigns.stats (JSONB). Reject anything else so a
+    # bad field name can never silently create an unknown key.
+    STATS_FIELDS = frozenset({
+        "sent", "delivered", "opens", "clicks", "bounces", "complaints",
+        "unsubscribes", "failed", "hard_bounce", "soft_bounce",
+    })
+
     def increment_stats(self, campaign_id: str, field: str, delta: int = 1) -> None:
+        """Atomically add ``delta`` to ``campaigns.stats[field]``.
+
+        Uses the ``increment_campaign_stat`` SQL function so concurrent
+        webhooks/tracking events cannot lose updates. Falls back to the legacy
+        read-modify-write when the function has not been deployed yet.
+        """
+        if field not in self.STATS_FIELDS:
+            raise ValueError(f"unknown stats field: {field!r}")
+        try:
+            self.client.rpc(
+                "increment_campaign_stat",
+                {"p_campaign_id": campaign_id, "p_field": field, "p_delta": delta},
+            ).execute()
+            return
+        except Exception as exc:  # noqa: BLE001 - fall back on older schemas
+            logger.warning("atomic stats RPC unavailable (%s); using fallback", exc)
+
         campaign = self.get_campaign(campaign_id)
         if campaign is None:
             return

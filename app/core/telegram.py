@@ -1,4 +1,4 @@
-﻿"""Telegram bot alert dispatching with per-section overrides.
+"""Telegram bot alert dispatching with per-section overrides.
 
 The bot token and chat id can be configured globally in the environment and
 overridden per channel in the database (email, B SMS, Bird SMS).  Resolution is
@@ -83,6 +83,24 @@ def clear_cache(section: str | None = None) -> None:
         _cache.pop(section, None)
 
 
+_MARKDOWN_SPECIALS = str.maketrans({
+    "\\": "\\\\",
+    "_": "\\_",
+    "*": "\\*",
+    "`": "\\`",
+    "[": "\\[",
+})
+
+
+def escape_markdown(text: str) -> str:
+    """Escape user/campaign text so legacy Markdown parsing cannot reject it.
+
+    Telegram answers 400 for unbalanced ``*``/``_``/``[`` sequences, which used
+    to drop the whole alert. Dynamic values must pass through this helper.
+    """
+    return str(text or "").translate(_MARKDOWN_SPECIALS)
+
+
 def masked_hint(value: str) -> str:
     """A non-reversible hint for a secret (last four characters only)."""
     value = str(value or "")
@@ -133,6 +151,15 @@ class TelegramClient:
         except requests.RequestException as exc:
             logger.warning("telegram request failed: %s", exc)
             return False
+        if not resp.ok and parse_mode and resp.status_code == 400:
+            # A malformed entity must never swallow the alert: resend verbatim.
+            logger.warning("telegram rejected %s markup; retrying as plain text", parse_mode)
+            payload.pop("parse_mode", None)
+            try:
+                resp = requests.post(url, json=payload, timeout=15)
+            except requests.RequestException as exc:
+                logger.warning("telegram plain-text retry failed: %s", exc)
+                return False
         if not resp.ok:
             logger.warning("telegram API error [%s]: %s", resp.status_code, resp.text[:300])
             return False

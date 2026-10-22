@@ -9,7 +9,10 @@ from pydantic import BaseModel, Field
 class BrevoEvent(BaseModel):
     """Normalised representation of a Brevo event webhook payload."""
 
-    event: Literal["delivered", "opened", "click", "hard_bounce", "soft_bounce", "complaint", "unsubscribe"]
+    event: Literal[
+        "delivered", "opened", "click", "hard_bounce", "soft_bounce",
+        "complaint", "unsubscribe", "failed",
+    ]
     email: str = Field(alias="email")
     # Brevo's event webhooks embed this id automatically per recipient.
     # When available we use it to resolve campaign_recipients.

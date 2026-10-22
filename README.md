@@ -28,8 +28,9 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
 - Server-rendered dashboard + rich-text (Quill) composer.
 - Telegram alerts for breaker trips plus periodic campaign progress/completion
   summaries (sent / opens / clicks).
-- **cPanel-friendly**: runs under Passenger with a cron-driven send engine
-  (`SEND_MODE=cron`) when there is no SSH, Redis or Celery.
+- **Portable deployment**: Windows Server supervisor (`scripts/run_stack.py`)
+  or a Heroku-style `Procfile`; a Redis-less cron engine (`SEND_MODE=cron`) is
+  available as a fallback.
 
 ## Architecture
 
@@ -115,6 +116,12 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
    (see below). Sending is blocked until a public base URL is set. (For a
    throwaway URL instead, `cloudflared tunnel --url http://127.0.0.1:5000`
    prints a temporary `https://….trycloudflare.com` you can paste in.)
+
+   When every request reaches the app through the tunnel, also set
+   `TRUST_CLOUDFLARE_CLIENT_IP=true` in `.env`. This lets rate limits and
+   tracking events use the real visitor IP instead of `127.0.0.1`. Leave it
+   false if the origin is directly reachable, otherwise the header is
+   spoofable.
 
 6. Run the whole stack with one command (Windows):
 
@@ -298,7 +305,8 @@ signed Flask session cookie.
 | POST   | `/api/webhooks/brevo`                  | Brevo event webhook (shared-secret token)|
 | GET    | `/api/track/<c>/<r>/open`              | 1x1 open-tracking pixel                  |
 | GET    | `/api/track/<c>/<r>/click`             | Click tracker redirect (`?target_url=`)  |
-| GET    | `/api/unsubscribe`                     | Click-based unsubscribe (`?cid&rid`)     |
+| GET    | `/api/unsubscribe`                     | Unsubscribe confirmation page (`?cid&rid&t`) |
+| POST   | `/api/unsubscribe/confirm`             | Confirm the page unsubscribe             |
 | POST   | `/api/unsubscribe`                     | RFC 8058 one-click unsubscribe           |
 
 ## Environment Variables
@@ -313,10 +321,14 @@ and stored in the database. See [`.env.example`](.env.example) for the list.
 Every sent message includes RFC 8058 unsubscribe headers:
 
 ```text
-List-Unsubscribe: <https://BASE_URL/api/unsubscribe?cid=CAMPAIGN_ID&rid=RECIPIENT_ID>
+List-Unsubscribe: <https://BASE_URL/api/unsubscribe?cid=CAMPAIGN_ID&rid=RECIPIENT_ID&t=TOKEN>
 List-Unsubscribe-Post: List-Unsubscribe=One-Click
 X-Mailin-custom: campaign=CAMPAIGN_ID;recipient=RECIPIENT_ID
 ```
+
+`t` is an HMAC binding the link to that campaign and recipient. The confirmation
+`GET` is read-only so link scanners cannot unsubscribe anyone; RFC 8058 clients
+may still POST directly and unsubscribe immediately.
 
 `BASE_URL` is the **Public base URL** from Settings (must be a real internet
 URL — localhost/local IPs are rejected and block sending). `X-Mailin-custom`
@@ -379,53 +391,48 @@ processing, scheduling helpers and dashboard rendering.
 
 ## Deployment
 
-A `Procfile` is included for Heroku-style platforms:
+### Windows Server (RDP) — primary target
 
-```text
-web:    gunicorn --config gunicorn.conf.py "app:create_app()"
-worker: celery -A app.workers.celery_app:celery worker -Q celery,monitor --loglevel=info
-beat:   celery -A app.workers.celery_app:celery beat --loglevel=info
+Run the whole stack (waitress, Celery worker/beat, optional Redis and
+cloudflared) with one supervisor:
+
+```powershell
+.\env\Scripts\python.exe -m scripts.apply_sql
+.\env\Scripts\python.exe scripts\run_stack.py
 ```
 
-### cPanel / shared hosting (no SSH, no Redis)
+See `deploy/windows/README.md` for installation, Task Scheduler and update
+notes. Key points:
 
-On a cPanel host without SSH, Terminal or Redis, run under Passenger and let
-**system cron** drive sending via `SEND_MODE=cron` (no Celery worker or beat).
+- waitress binds `127.0.0.1:5000`; only the cloudflared tunnel is public.
+- Celery runs with `--pool=solo` (required on Windows).
+- Redis uses separate databases for the broker (`/0`), result backend (`/1`),
+  rate limiting (`/2`) and the app cache (`/3`).
+- Beat's schedule file lives in `%LOCALAPPDATA%\webmailer`, not the repo.
 
-1. **Setup Python App** in cPanel:
-   - Application root: this repository.
-   - Application startup file: `passenger_wsgi.py`
-   - Application Entry point: `application`
-   - Use **Run Pip Install** with `requirements.txt`.
+### Heroku-style (Linux)
 
-2. Create `.env` (File Manager or the app's environment-variable UI) and set:
+A `Procfile` is included:
 
-   ```ini
-   SEND_MODE=cron
-   RATELIMIT_STORAGE_URI=memory://
-   PUBLIC_BASE_URL=https://your-domain.com
-   AUTH_REQUIRED=true
-   AUTH_ALLOWED_EMAILS=you@example.com
-   # + SUPABASE_*, BREVO_API_KEY, BREVO_WEBHOOK_SECRET, TELEGRAM_*
-   ```
+```text
+release: python -m scripts.apply_sql
+web:     gunicorn --config gunicorn.conf.py "app:create_app()"
+worker:  celery -A app.workers.celery_app:celery worker ... -Q celery,monitor
+beat:    celery -A app.workers.celery_app:celery beat ...
+```
 
-2. **Cron Jobs** (cPanel → Cron Jobs), replacing `APP`/paths with your account:
+`gunicorn.conf.py` binds `$PORT` automatically (Heroku requirement) and
+defaults to the threaded `gthread` worker class.
 
-   ```text
-   # once, to create tables + seed settings, then remove this line:
-   * * * * * /home/USER/virtualenv/APP/3.x/bin/python /home/USER/APP/deploy/cpanel_bootstrap.py
+`scripts/apply_sql.py` records applied files in `schema_migrations`, so
+redeploys only run new migrations (`--force` re-runs everything).
 
-   # recurring every minute — the send engine:
-   * * * * * /home/USER/virtualenv/APP/3.x/bin/python /home/USER/APP/deploy/cpanel_tick.py
-   ```
+### Redis-less fallback (`SEND_MODE=cron`)
 
-   The bootstrap script is idempotent (safe to re-run) and the tick runs for a
-   ~50s budget so ticks never overlap. Both fall back to
-   `python -m app.cron bootstrap` / `... tick` if you have a terminal.
-
-3. In `SEND_MODE=cron` there is no Redis or Celery: scheduled campaigns are
-   promoted and sending campaigns drained by each tick, the pause switch is
-   read from the database, and periodic Telegram progress alerts are throttled
-   on a small state file. `/api/health` reports `redis: disabled`.
+If a host has no Redis/Celery, set `SEND_MODE=cron` and drive sending from a
+scheduler running `python -m app.cron tick` every minute (budgeted to ~50s).
+The tick takes a lock file so overlapping cron runs cannot double-send, and it
+refuses to run at all when `SEND_MODE` is `celery`. The cPanel-specific wrappers
+are archived under `deploy/archive/cpanel/` and are no longer required.
 
 No static-file collection step is required — Flask serves `/static` directly.

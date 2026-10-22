@@ -37,6 +37,11 @@ logger = logging.getLogger(__name__)
 # How long to wait before retrying once a rate cap has been hit.
 CAP_RETRY_SECONDS = 120
 
+# Refuse to silently skip more than this many queued recipients at completion;
+# such a backlog means claiming is broken, not that everyone is ineligible.
+COMPLETION_GUARD_QUEUE = 1000
+COMPLETION_GUARD_RETRY_SECONDS = 300
+
 
 def _set_next_send_at(supabase, campaign_id: str, seconds: float | None) -> None:
     """Persist when the next paced send may run (None clears the hold-off)."""
@@ -166,7 +171,15 @@ def _send_once(campaign_id: str) -> dict:
     claimed = supabase.claim_recipients(campaign_id, chunk)
     if not claimed:
         # Nothing claimable -> drain leftover ineligible recipients and finish.
-        _complete_campaign(supabase, campaign_id)
+        if not _complete_campaign(supabase, campaign_id):
+            # Guard tripped: do not strand a large queue by completing.
+            _requeue(campaign_id, COMPLETION_GUARD_RETRY_SECONDS)
+            return {
+                "campaign_id": campaign_id,
+                "status": "sending",
+                "claimed": 0,
+                "requeue_in": COMPLETION_GUARD_RETRY_SECONDS,
+            }
         return {"campaign_id": campaign_id, "status": "completed", "claimed": 0}
 
     brevo = BrevoClient()
@@ -183,11 +196,13 @@ def _send_once(campaign_id: str) -> dict:
     ]
 
     def headers_factory(recipient: dict) -> dict[str, str]:
-        base = base_url.rstrip("/")
+        from app.core.content import build_unsubscribe_url
+
+        unsubscribe_url = build_unsubscribe_url(
+            base_url, campaign_id, recipient["recipient_id"]
+        )
         return {
-            "List-Unsubscribe": (
-                f"<{base}/api/unsubscribe?cid={campaign_id}&rid={recipient['recipient_id']}>"
-            ),
+            "List-Unsubscribe": f"<{unsubscribe_url}>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
             # Lets Brevo webhooks attribute opens/clicks/bounces to our rows.
             "X-Mailin-custom": (
@@ -224,20 +239,29 @@ def _send_once(campaign_id: str) -> dict:
         gap_max=settings.get("cross_gap_max_seconds") or config.cross_gap_max_seconds,
     )
 
-    results = brevo.send_batch(
-        recipients=recipients,
-        subject=campaign["subject"],
-        html_content=campaign["html_content"],
-        plain_text=campaign.get("plain_text_content"),
-        from_email=campaign["from_email"],
-        from_name=campaign["from_name"],
-        headers_factory=headers_factory,
-        content_factory=content_factory,
-        reply_to=settings.get("reply_to_email"),
-        jitter_ms=(0, int(plan.in_batch_jitter * 1000)),
-        gate=gate,
-        cancel_check=killswitch.is_paused,
-    )
+    try:
+        results = brevo.send_batch(
+            recipients=recipients,
+            subject=campaign["subject"],
+            html_content=campaign["html_content"],
+            plain_text=campaign.get("plain_text_content"),
+            from_email=campaign["from_email"],
+            from_name=campaign["from_name"],
+            headers_factory=headers_factory,
+            content_factory=content_factory,
+            reply_to=settings.get("reply_to_email"),
+            jitter_ms=(0, int(plan.in_batch_jitter * 1000)),
+            gate=gate,
+            cancel_check=killswitch.is_paused,
+        )
+    except Exception:
+        # Release the claim immediately instead of leaving rows in "sending"
+        # until the 15-minute stale-claim sweep.
+        logger.exception(
+            "brevo batch failed for %s; releasing %d claims", campaign_id, len(claimed)
+        )
+        _release_claims(supabase, [r["recipient_id"] for r in claimed])
+        raise
 
     sent_ids = [r.recipient_id for r in results if r.ok]
     failed_ids = [r.recipient_id for r in results if not r.ok]
@@ -260,8 +284,10 @@ def _send_once(campaign_id: str) -> dict:
         requeue_in = max(1, min(MAX_DEFER_SECONDS, int(round(plan.next_wait))))
     else:
         gate.reset()
-        _complete_campaign(supabase, campaign_id)
-        requeue_in = None
+        if _complete_campaign(supabase, campaign_id):
+            requeue_in = None
+        else:
+            requeue_in = COMPLETION_GUARD_RETRY_SECONDS
 
     result = {
         "campaign_id": campaign_id,
@@ -335,9 +361,62 @@ def _requeue(campaign_id: str, countdown: int) -> None:
     send_campaign.apply_async(args=[campaign_id], countdown=max(1, countdown))
 
 
-def _complete_campaign(supabase, campaign_id: str) -> None:
-    """Mark a campaign completed, skipping any leftover ineligible recipients."""
-    leftovers = supabase.list_recipients(campaign_id, status="queued")
+def _release_claims(supabase, recipient_ids: list[str]) -> None:
+    """Return claimed rows to the queue after a transport failure (best effort)."""
+    if not recipient_ids:
+        return
+    try:
+        supabase.bulk_update_recipients(
+            recipient_ids, {"status": "queued", "claimed_at": None}
+        )
+    except Exception:  # noqa: BLE001 - stale-claim sweep is the safety net
+        logger.warning("could not release %d claims", len(recipient_ids), exc_info=True)
+
+
+def _complete_campaign(supabase, campaign_id: str) -> bool:
+    """Mark a campaign completed, skipping any leftover ineligible recipients.
+
+    Returns ``False`` when a suspiciously large queue would be skipped: that
+    usually means claiming failed rather than every contact being ineligible,
+    so the campaign is retried instead of silently marked completed.
+    """
+    # Fetch one more than the guard threshold so the guard is detectable with
+    # a single query (the real client caps lists at the requested limit).
+    leftovers = supabase.list_recipients(
+        campaign_id, status="queued", limit=COMPLETION_GUARD_QUEUE + 1
+    )
+    campaign = supabase.get_campaign(campaign_id) or {}
+    stats = dict(campaign.get("stats") or {})
+    if len(leftovers) > COMPLETION_GUARD_QUEUE and not stats.get("_completion_guard"):
+        stats["_completion_guard"] = 1
+        supabase.update_campaign(campaign_id, {
+            "stats": stats,
+            "last_error": (
+                f"completion guard: {len(leftovers)} queued recipients were not "
+                "claimable; retrying instead of completing"
+            ),
+        })
+        logger.error(
+            "completion guard tripped for %s: %s queued recipients",
+            campaign_id,
+            len(leftovers),
+        )
+        try:
+            from app.core.notifications import notify
+
+            notify(
+                "Campaign completion guard",
+                [
+                    f"Campaign: `{campaign_id}`",
+                    f"Queued and unclaimable: {len(leftovers)}",
+                    "It was retried instead of being marked completed. "
+                    "Check the worker logs.",
+                ],
+                level="error",
+            )
+        except Exception:  # noqa: BLE001 - alerts must never break the loop
+            logger.warning("completion guard alert failed", exc_info=True)
+        return False
     if leftovers:
         supabase.bulk_update_recipients(
             [r["id"] for r in leftovers],
@@ -360,11 +439,12 @@ def _complete_campaign(supabase, campaign_id: str) -> None:
             f"Sent: {stats.get('sent', 0)}",
             f"Opens: {stats.get('opens', 0)}",
             f"Clicks: {stats.get('clicks', 0)}",
-            f"Failed: {stats.get('failed', stats.get('bounces', 0))}",
+            f"Failed: {stats.get('failed', 0)}",
             f"Skipped: {skipped}",
         ])
     except Exception as exc:  # noqa: BLE001
         logger.warning("completion notification failed: %s", exc)
+    return True
 
 
 @celery.task(name="app.workers.tasks_campaign.campaign_progress_alerts")
@@ -540,8 +620,8 @@ def _flip_held_to_sending(supabase) -> tuple[list[str], list[str]]:
     for campaign in held:
         campaign_id = campaign["id"]
         if supabase.count_recipients(campaign_id, status="queued") <= 0:
-            _complete_campaign(supabase, campaign_id)
-            completed.append(campaign_id)
+            if _complete_campaign(supabase, campaign_id):
+                completed.append(campaign_id)
             continue
         supabase.update_campaign(campaign_id, {
             "status": "sending",
