@@ -105,6 +105,20 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
    python -m scripts.apply_sql --only 04_campaign_scheduling.sql
    ```
 
+   **Backfilling old opt-outs:** events recorded before unsubscribe tracking
+   stored the address cannot be mapped back to emails. Export the suppressed
+   addresses from Brevo (or your source list) and import them:
+
+   ```bash
+   python -m scripts.import_suppressions suppressions.csv           # dry run
+   python -m scripts.import_suppressions suppressions.csv --apply   # write
+   ```
+
+   The importer accepts a CSV with an `email` column or one address per line.
+   Use `--reason unsubscribed|bounced_hard|bounced_soft|complained|invalid` to
+   choose the suppression status. Unknown addresses are created already
+   suppressed so a later list import cannot reactivate them.
+
 4. Start Redis (broker / cache / rate-limit storage).
 
 5. **Set a public base URL** so opens/clicks and one-click unsubscribe work.

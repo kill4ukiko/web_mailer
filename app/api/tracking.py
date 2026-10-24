@@ -352,6 +352,9 @@ def _apply_unsubscribe(
             recipient_id=recipient_id,
             ip_address=get_client_ip(),
             user_agent=request.headers.get("User-Agent"),
+            # Keep the address on the event even if campaign rows are deleted:
+            # record_event falls back to an anonymous insert on FK failure.
+            raw_payload={"source": "tracking", "email": email},
         )
         # An opt-out is an unsubscribe, never a complaint.
         try:

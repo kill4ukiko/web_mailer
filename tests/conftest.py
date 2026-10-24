@@ -431,6 +431,25 @@ class FakeSupabase:
         email = email.lower().strip()
         return next((c for c in self.contacts if c["email"] == email), None)
 
+    def get_contacts_by_emails(self, emails):
+        cleaned = {str(e).lower().strip() for e in emails if e and str(e).strip()}
+        return {
+            c["email"]: {"id": c["id"], "email": c["email"], "status": c["status"]}
+            for c in self.contacts
+            if c["email"] in cleaned
+        }
+
+    def bulk_suppress_contacts(self, emails, reason):
+        cleaned = {str(e).lower().strip() for e in emails if e and str(e).strip()}
+        count = 0
+        for c in self.contacts:
+            if c["email"] in cleaned:
+                c["status"] = reason
+                c["safe_to_send"] = False
+                c["updated_at"] = "2026-01-01T00:00:00Z"
+                count += 1
+        return count
+
     def list_lists(self):
         out = []
         for entry in self.lists:
@@ -672,6 +691,8 @@ class FakeSupabase:
             "created_at": "2026-01-01T00:00:00Z",
             "started_at": None,
             "finished_at": None,
+            "last_error": data.get("last_error"),
+            "reputation_checked_at": data.get("reputation_checked_at"),
             "reuse_root_id": data.get("reuse_root_id"),
         }
         self.campaigns.append(row)
@@ -714,6 +735,27 @@ class FakeSupabase:
             elif c["status"] == "completed" and str(c.get("finished_at") or "") >= since:
                 out.append(c)
         return out
+
+    def list_recently_completed_campaigns(self, hours=24):
+        from datetime import datetime, timedelta, timezone
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        return [
+            c for c in self.campaigns
+            if c["status"] == "completed"
+            and c.get("reputation_checked_at") is None
+            and str(c.get("finished_at") or "") >= since
+        ]
+
+    def mark_campaign_reputation_checked(self, campaign_id, *, healthy, last_error=None):
+        campaign = self.get_campaign(campaign_id)
+        if campaign is None or campaign.get("reputation_checked_at") is not None:
+            return False
+        campaign["reputation_checked_at"] = "2026-01-01T00:00:00Z"
+        if not healthy:
+            campaign["circuit_state"] = "paused"
+            campaign["last_error"] = last_error
+        return True
 
     def set_priority(self, campaign_id, priority):
         campaign = self.get_campaign(campaign_id)

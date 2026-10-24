@@ -2,71 +2,95 @@
 
 Scheduled by Celery Beat: evaluates delivery health for every active
 campaign and pauses + alerts when bounce/complaint thresholds are crossed.
+Recently completed campaigns are re-checked until they settle, because short
+sends can finish between two ticks and bounce webhooks arrive late.
 """
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from app.config import STALE_CLAIM_TIMEOUT_SECONDS
 from app.workers.celery_app import celery
 
 logger = logging.getLogger(__name__)
 
+# Completed campaigns are re-checked until they settle, so late bounces are
+# caught. A healthy campaign is finalized after SETTLE_HOURS; a breach is
+# finalized immediately and pauses/alert once.
+CIRCUIT_POST_COMPLETION_HOURS = 48
+CIRCUIT_SETTLE_HOURS = 24
+
 
 @celery.task(name="app.workers.tasks_monitor.evaluate_circuit")
 def evaluate_circuit() -> dict:
-    from app.core.supabase_client import get_supabase
+    from app.core.circuit import breach_reasons, pause_campaign
     from app.core.mailer_config import effective_settings
-    from app.core.telegram import get_telegram
+    from app.core.supabase_client import get_supabase
 
     supabase = get_supabase()
-    telegram = get_telegram()
     settings = effective_settings(supabase)
 
     max_bounce = float(settings.get("max_hard_bounce_rate") or 0.02)
     max_complaint = float(settings.get("max_complaint_rate") or 0.001)
 
     tripped: list[str] = []
+    checked = 0
+
     for campaign in supabase.list_active_campaigns():
-        campaign_id = campaign["id"]
-        metrics = supabase.get_campaign_metrics(campaign_id)
-        sent = metrics.get("sent", 0) or 0
-        if sent == 0:
+        if campaign.get("circuit_state") not in ("ok", "warning"):
             continue
-
-        bounce_rate = (metrics.get("bounces", 0) or 0) / sent
-        complaint_rate = (metrics.get("complaints", 0) or 0) / sent
-
-        breaches = []
-        if bounce_rate > max_bounce:
-            breaches.append(f"hard bounce rate {bounce_rate:.2%} > {max_bounce:.2%}")
-        if complaint_rate > max_complaint:
-            breaches.append(f"complaint rate {complaint_rate:.2%} > {max_complaint:.2%}")
-        if not breaches:
-            continue
-
-        # Trip the circuit breaker.
-        supabase.update_campaign(campaign_id, {
-            "status": "paused",
-            "circuit_state": "paused",
-            "finished_at": "now()",
-        })
-        tripped.append(campaign_id)
-
-        message = (
-            f"🚨 *Circuit breaker tripped*\n"
-            f"Campaign: {campaign.get('name')} (`{campaign_id}`)\n"
-            f"Reasons: {', '.join(breaches)}\n"
-            f"Stats: sent={sent}, bounces={metrics.get('bounces')}, "
-            f"complaints={metrics.get('complaints')}"
+        checked += 1
+        reasons = breach_reasons(
+            campaign.get("stats") or {}, max_bounce, max_complaint
         )
-        telegram.send_message(message)
-        logger.warning("circuit breaker tripped for campaign %s: %s", campaign_id, breaches)
+        if not reasons:
+            continue
+        pause_campaign(supabase, campaign, reasons)
+        tripped.append(campaign["id"])
 
-    return {"tripped": tripped, "checked": 0, "timestamp": ""}
+    for campaign in supabase.list_recently_completed_campaigns(
+        CIRCUIT_POST_COMPLETION_HOURS
+    ):
+        reasons = breach_reasons(
+            campaign.get("stats") or {}, max_bounce, max_complaint
+        )
+        checked += 1
+        if reasons:
+            reason_text = "; ".join(reasons)
+            claimed = supabase.mark_campaign_reputation_checked(
+                campaign["id"], healthy=False, last_error=reason_text
+            )
+            if claimed:
+                pause_campaign(supabase, campaign, reasons, completed=True)
+                tripped.append(campaign["id"])
+            continue
+
+        if _campaign_age_hours(campaign.get("finished_at")) >= CIRCUIT_SETTLE_HOURS:
+            supabase.mark_campaign_reputation_checked(
+                campaign["id"], healthy=True
+            )
+
+    return {
+        "tripped": tripped,
+        "checked": checked,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
-# Claims older than this are considered abandoned (worker crash) and requeued.
+def _campaign_age_hours(finished_at: object) -> float:
+    """Age in hours for a finished campaign; 0 when the timestamp is unusable."""
+    from datetime import datetime, timezone
+
+    if not finished_at:
+        return 0.0
+    try:
+        finished = datetime.fromisoformat(str(finished_at).replace("Z", "+00:00"))
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - finished).total_seconds() / 3600
+    except (TypeError, ValueError):
+        return 0.0
 
 
 @celery.task(name="app.workers.tasks_monitor.reconcile_stuck_campaigns")

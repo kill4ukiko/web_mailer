@@ -292,6 +292,48 @@ class SupabaseWrapper:
         )
         return {r["email"]: r["id"] for r in data if r.get("email") and r.get("id")}
 
+    def get_contacts_by_emails(
+        self, emails: Iterable[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Look up contacts by normalized email (used by suppression import)."""
+        cleaned = sorted({
+            str(email).lower().strip()
+            for email in emails
+            if email and str(email).strip()
+        })
+        found: dict[str, dict[str, Any]] = {}
+        for offset in range(0, len(cleaned), 100):
+            chunk = cleaned[offset:offset + 100]
+            rows = (
+                self.client.table("contacts")
+                .select("id,email,status")
+                .in_("email", chunk)
+                .execute()
+                .data
+                or []
+            )
+            for row in rows:
+                if row.get("email"):
+                    found[row["email"]] = row
+        return found
+
+    def bulk_suppress_contacts(self, emails: Iterable[str], reason: str) -> int:
+        """Apply a suppression status to many existing contacts."""
+        cleaned = sorted({
+            str(email).lower().strip()
+            for email in emails
+            if email and str(email).strip()
+        })
+        payload = {
+            "status": reason,
+            "safe_to_send": False,
+            "updated_at": "now()",
+        }
+        for offset in range(0, len(cleaned), 100):
+            chunk = cleaned[offset:offset + 100]
+            self.client.table("contacts").update(payload).in_("email", chunk).execute()
+        return len(cleaned)
+
     def delete_contact(self, contact_id: str) -> bool:
         """Delete a contact by id (recipients cascade)."""
         result = (
@@ -588,6 +630,70 @@ class SupabaseWrapper:
             elif str(row.get("finished_at") or "") >= since:
                 out.append(row)
         return out
+
+    def list_recently_completed_campaigns(
+        self, hours: int = 24
+    ) -> list[dict[str, Any]]:
+        """Completed campaigns finished recently and not yet health-checked.
+
+        Short campaigns can finish between two monitor ticks, so the circuit
+        breaker must inspect them after the fact. A breach claims the row with
+        ``reputation_checked_at`` immediately; a healthy campaign stays eligible
+        until the monitor settles it after 24 hours.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        try:
+            rows = (
+                self.client.table("campaigns")
+                .select("*")
+                .eq("status", "completed")
+                .is_("reputation_checked_at", "null")
+                .execute()
+                .data
+                or []
+            )
+        except Exception as exc:  # noqa: BLE001 - pre-migration schema fallback
+            logger.warning(
+                "reputation scan unavailable (apply 20_safety_fixes.sql): %s", exc
+            )
+            return []
+        return [
+            row
+            for row in rows
+            if row.get("reputation_checked_at") is None
+            and str(row.get("finished_at") or "") >= since
+        ]
+
+    def mark_campaign_reputation_checked(
+        self,
+        campaign_id: str,
+        *,
+        healthy: bool,
+        last_error: str | None = None,
+    ) -> bool:
+        """Claim the one-time health check for a completed campaign.
+
+        Returns ``False`` when another worker already claimed it, so alerts are
+        never duplicated.
+        """
+        payload: dict[str, Any] = {"reputation_checked_at": "now()"}
+        if not healthy:
+            payload.update({
+                "circuit_state": "paused",
+                "last_error": (last_error or "")[:1000],
+            })
+        rows = (
+            self.client.table("campaigns")
+            .update(payload)
+            .eq("id", campaign_id)
+            .is_("reputation_checked_at", "null")
+            .execute()
+            .data
+            or []
+        )
+        return bool(rows)
 
     def set_priority(self, campaign_id: str, priority: str) -> dict[str, Any] | None:
         """Set a campaign's priority ('normal' | 'high')."""

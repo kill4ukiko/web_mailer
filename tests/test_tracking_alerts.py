@@ -66,6 +66,11 @@ def test_unsubscribe_endpoint_marks_and_notifies(app, client, supabase, monkeypa
     assert contact["last_recipient_status"] == "unsubscribed"
     assert stats["unsubscribes"] == 1
     assert stats["complaints"] == 0
+    event = next(e for e in supabase.events if e["event_type"] == "unsubscribe")
+    assert event["raw_payload"] == {
+        "source": "tracking",
+        "email": "u@example.com",
+    }
     success_html = res.get_data(as_text=True).lower()
     assert "you&rsquo;re unsubscribed" in success_html
     assert "webmailer" not in success_html

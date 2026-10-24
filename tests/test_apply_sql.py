@@ -80,3 +80,13 @@ def test_force_reruns_recorded_files(monkeypatch):
 
 def test_order_includes_atomic_stats_migration():
     assert "19_atomic_stats.sql" in apply_sql.ORDER
+
+
+def test_order_includes_safety_fixes_migration():
+    assert "20_safety_fixes.sql" in apply_sql.ORDER
+
+
+def test_safety_migration_adds_campaign_health_columns():
+    sql = (apply_sql.SQL_DIR / "20_safety_fixes.sql").read_text(encoding="utf-8")
+    assert "campaigns ADD COLUMN IF NOT EXISTS last_error" in sql
+    assert "campaigns ADD COLUMN IF NOT EXISTS reputation_checked_at" in sql

@@ -50,6 +50,9 @@
     {% endif %}
     <span class="muted">Circuit breaker: <strong>{{ campaign.circuit_state }}</strong></span>
   </div>
+  {% if campaign.last_error %}
+  <p class="notice small"><strong>Stopped:</strong> {{ campaign.last_error }}</p>
+  {% endif %}
   <p id="action-status" class="muted"></p>
   {% if campaign.status == 'held' %}
   <p class="muted">On hold: the {{ campaign.held_reason or 'send' }}-limit was reached. It resumes

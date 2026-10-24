@@ -175,6 +175,7 @@ def test_completion_guard_does_not_silently_skip_large_queue(supabase, monkeypat
     assert result["requeue_in"] == tasks_campaign.COMPLETION_GUARD_RETRY_SECONDS
     assert supabase.get_campaign(campaign["id"])["status"] == "sending"
     assert supabase.count_recipients(campaign["id"], status="queued") == 1001
+    assert "completion guard" in supabase.get_campaign(campaign["id"])["last_error"]
 
     # The guard only fires once; the retry must eventually drain the queue.
     result = tasks_campaign.send_campaign.run(campaign["id"])
@@ -214,6 +215,135 @@ def test_evaluate_circuit_ignores_healthy_campaign(supabase, monkeypatch):
     assert result["tripped"] == []
     assert supabase.get_campaign(campaign["id"])["status"] == "sending"
     telegram.send_message.assert_not_called()
+
+
+def test_evaluate_circuit_uses_hard_bounces_not_soft(supabase, monkeypatch):
+    from app.workers.tasks_monitor import evaluate_circuit
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=0)
+    campaign["stats"].update({
+        "sent": 100,
+        "hard_bounce": 0,
+        "soft_bounce": 20,
+        "bounces": 20,
+    })
+
+    telegram = mock.Mock()
+    monkeypatch.setattr("app.core.telegram._singleton", telegram)
+
+    result = evaluate_circuit.run()
+    assert result["tripped"] == []
+    assert supabase.get_campaign(campaign["id"])["status"] == "sending"
+    telegram.send_message.assert_not_called()
+
+
+def test_evaluate_circuit_checks_completed_campaign_once(supabase, monkeypatch):
+    from datetime import datetime, timezone
+
+    from app.workers.tasks_monitor import evaluate_circuit
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=0)
+    campaign["status"] = "completed"
+    campaign["finished_at"] = datetime.now(timezone.utc).isoformat()
+    campaign["stats"].update({"sent": 100, "hard_bounce": 5})
+
+    telegram = mock.Mock()
+    monkeypatch.setattr("app.core.telegram._singleton", telegram)
+
+    result = evaluate_circuit.run()
+
+    assert campaign["id"] in result["tripped"]
+    assert supabase.get_campaign(campaign["id"])["circuit_state"] == "paused"
+    assert "hard bounce rate" in supabase.get_campaign(campaign["id"])["last_error"]
+    assert supabase.get_campaign(campaign["id"])["reputation_checked_at"] is not None
+    telegram.send_message.assert_called_once()
+
+    result = evaluate_circuit.run()
+    assert campaign["id"] not in result["tripped"]
+    telegram.send_message.assert_called_once()
+
+
+def test_completed_campaign_is_rechecked_for_late_bounces(supabase, monkeypatch):
+    from datetime import datetime, timezone
+
+    from app.workers.tasks_monitor import evaluate_circuit
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=0)
+    campaign["status"] = "completed"
+    campaign["finished_at"] = datetime.now(timezone.utc).isoformat()
+    campaign["stats"].update({"sent": 100, "hard_bounce": 0})
+    telegram = mock.Mock()
+    monkeypatch.setattr("app.core.telegram._singleton", telegram)
+
+    evaluate_circuit.run()
+    assert supabase.get_campaign(campaign["id"])["reputation_checked_at"] is None
+
+    campaign["stats"]["hard_bounce"] = 5
+    result = evaluate_circuit.run()
+
+    assert campaign["id"] in result["tripped"]
+    assert supabase.get_campaign(campaign["id"])["circuit_state"] == "paused"
+    assert supabase.get_campaign(campaign["id"])["reputation_checked_at"] is not None
+    telegram.send_message.assert_called_once()
+
+
+def test_completed_healthy_campaign_settles_after_24_hours(supabase, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from app.workers.tasks_monitor import evaluate_circuit
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=0)
+    campaign["status"] = "completed"
+    campaign["finished_at"] = (
+        datetime.now(timezone.utc) - timedelta(hours=25)
+    ).isoformat()
+    campaign["stats"].update({"sent": 100, "hard_bounce": 0})
+
+    telegram = mock.Mock()
+    monkeypatch.setattr("app.core.telegram._singleton", telegram)
+
+    evaluate_circuit.run()
+
+    assert supabase.get_campaign(campaign["id"])["reputation_checked_at"] is not None
+    telegram.send_message.assert_not_called()
+
+
+def test_send_campaign_pauses_mid_send_after_breach(supabase, monkeypatch):
+    from app.workers.tasks_campaign import send_campaign
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=4)
+    campaign["batch_size"] = 2
+
+    calls = []
+
+    def fake_send_batch(self, recipients, **kwargs):
+        calls.append(recipients)
+        campaign["stats"]["hard_bounce"] = 2
+        return [
+            SendResult(
+                recipient_id=r["recipient_id"],
+                email=r["email"],
+                ok=True,
+                message_id="m",
+            )
+            for r in recipients
+        ]
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_batch", fake_send_batch)
+    telegram = mock.Mock()
+    monkeypatch.setattr("app.core.telegram._singleton", telegram)
+
+    result = send_campaign.run(campaign["id"])
+
+    assert result["status"] == "paused"
+    assert "hard bounce rate" in result["reason"]
+    stored = supabase.get_campaign(campaign["id"])
+    assert stored["status"] == "paused"
+    assert stored["circuit_state"] == "paused"
+    assert "hard bounce rate" in stored["last_error"]
+    assert len(calls) == 1
+    assert supabase.count_recipients(campaign["id"], status="queued") == 2
+    telegram.send_message.assert_called_once()
 
 
 def test_send_campaign_skips_leftover_ineligible_recipients(supabase, monkeypatch):

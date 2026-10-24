@@ -43,6 +43,23 @@ COMPLETION_GUARD_QUEUE = 1000
 COMPLETION_GUARD_RETRY_SECONDS = 300
 
 
+def _health_breaches(campaign: dict, settings: dict) -> list[str]:
+    """Evaluate the campaign's current delivery health thresholds."""
+    from app.core.circuit import breach_reasons
+
+    return breach_reasons(
+        campaign.get("stats") or {},
+        float(settings.get("max_hard_bounce_rate") or 0.02),
+        float(settings.get("max_complaint_rate") or 0.001),
+    )
+
+
+def _pause_for_health(supabase, campaign: dict, reasons: list[str]) -> None:
+    from app.core.circuit import pause_campaign
+
+    pause_campaign(supabase, campaign, reasons)
+
+
 def _set_next_send_at(supabase, campaign_id: str, seconds: float | None) -> None:
     """Persist when the next paced send may run (None clears the hold-off)."""
     from datetime import datetime, timedelta, timezone
@@ -99,6 +116,16 @@ def _send_once(campaign_id: str) -> dict:
         return {"campaign_id": campaign_id, "status": "skipped"}
 
     settings = effective_settings(supabase)
+
+    # --- Reputation gate: never send another batch after a threshold breach. ---
+    breaches = _health_breaches(campaign, settings)
+    if breaches:
+        _pause_for_health(supabase, campaign, breaches)
+        return {
+            "campaign_id": campaign_id,
+            "status": "paused",
+            "reason": "; ".join(breaches),
+        }
 
     # --- Global kill switch: stop sending entirely while paused. ---
     if settings.get("sending_paused") or killswitch.is_paused():
@@ -276,6 +303,21 @@ def _send_once(campaign_id: str) -> dict:
         )
     if failed_ids:
         supabase.bulk_update_recipients(failed_ids, {"status": "failed", "last_error": "brevo send failed"})
+
+    # Bounce/complaint webhooks may have arrived while this batch was sending.
+    # Pause before scheduling more work if the campaign is now unhealthy.
+    refreshed = supabase.get_campaign(campaign_id) or campaign
+    breaches = _health_breaches(refreshed, settings)
+    if breaches:
+        _pause_for_health(supabase, refreshed, breaches)
+        return {
+            "campaign_id": campaign_id,
+            "status": "paused",
+            "claimed": len(claimed),
+            "sent": len(sent_ids),
+            "failed": len(failed_ids),
+            "reason": "; ".join(breaches),
+        }
 
     # A full chunk means there is (probably) more work -> run again after the
     # planned wait. That wait carries the per-email jitter (never slept here).
