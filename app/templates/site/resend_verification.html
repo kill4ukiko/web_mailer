@@ -1,0 +1,29 @@
+{% extends "site/base.html" %}
+{% block title %}Resend confirmation - GoPriLad{% endblock %}
+{% block robots %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block content %}
+<section class="auth-section">
+  <div class="wrap narrow">
+    <div class="message-card">
+      <p class="eyebrow">Email confirmation</p>
+      <h1>Resend your link.</h1>
+      {% if sent %}
+        <div class="form-success" role="status">{{ message }}</div>
+        <p class="field-note">For privacy, we do not reveal whether an account exists for an address.</p>
+        <div class="button-row">
+          <a class="button" href="{{ url_for('auth.login_page') }}">Go to sign in</a>
+          <a class="button button-ghost" href="{{ url_for('site.register_page') }}">Create an account</a>
+        </div>
+      {% else %}
+        <p class="lede">Enter the address you registered with and we will send a fresh confirmation link if the account is still pending.</p>
+        <form method="post" action="{{ url_for('site.resend_submit') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label for="email">Email address</label>
+          <input id="email" name="email" type="email" autocomplete="email" required value="{{ email }}" placeholder="you@example.com">
+          <button class="button button-wide" type="submit">Resend confirmation</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

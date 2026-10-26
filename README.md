@@ -28,6 +28,9 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
 - Server-rendered dashboard + rich-text (Quill) composer.
 - Telegram alerts for breaker trips plus periodic campaign progress/completion
   summaries (sent / opens / clicks).
+- **Public GoPriLad site** served from the same app on `goprilad.com`: world
+  headlines from public RSS feeds, verified email/password accounts, optional
+  news-email consent and an opt-in `Website Subscribers` list.
 - **Portable deployment**: Windows Server supervisor (`scripts/run_stack.py`)
   or a Heroku-style `Procfile`; a Redis-less cron engine (`SEND_MODE=cron`) is
   available as a fallback.
@@ -60,7 +63,8 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
 > builds the virtualenv, installs `requirements.txt`, downloads the portable
 > tools (`Redis` for Windows + `cloudflared`) into `.tools\`, creates `.env`
 > from `.env.example`, applies the DB migrations and sets up the Cloudflare
-> named tunnel. It is idempotent and safe to re-run, and needs no Python
+> named tunnel for `track.goprilad.com`, `goprilad.com` and
+> `www.goprilad.com`. It is idempotent and safe to re-run, and needs no Python
 > pre-installed beyond 3.10 (it will tell you what to install if missing).
 > Then skip to step 4.
 
@@ -84,18 +88,11 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
    the Supabase SQL editor (or a Postgres client pointed at `DATABASE_URL`):
 
    ```text
-   sql/01_schema.sql
-   sql/02_indexes.sql
-   sql/03_functions.sql
-   sql/04_campaign_scheduling.sql
-   sql/05_mailer_defaults.sql
-   sql/06_sending_safety.sql
-   sql/07_contact_lists.sql
-   sql/08_brevo_plan_and_guard.sql
-   sql/09_send_engine.sql
-   sql/10_remove_qev.sql
-   sql/11_campaign_reuse.sql
+   sql/01_schema.sql … sql/21_site_accounts.sql
    ```
+
+   Apply every file in numeric order; `scripts/apply_sql.py` holds the
+   authoritative order.
 
    Or apply them automatically with the bundled runner (idempotent — skips
    objects that already exist):
@@ -122,8 +119,9 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
 4. Start Redis (broker / cache / rate-limit storage).
 
 5. **Set a public base URL** so opens/clicks and one-click unsubscribe work.
-   The project ships a **Cloudflare named tunnel** for the stable host
-   `https://track.goprilad.com` (created by `setup-local.bat`). Make sure
+   The project ships a **Cloudflare named tunnel** for the stable hosts
+   `https://track.goprilad.com`, `https://goprilad.com` and
+   `https://www.goprilad.com` (created by `setup-local.bat`). Make sure
    **Settings → Public base URL** is `https://track.goprilad.com` and point the
    Brevo webhook at
    `https://track.goprilad.com/api/webhooks/brevo?token=YOUR_WEBHOOK_SECRET`
@@ -136,6 +134,11 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
    tracking events use the real visitor IP instead of `127.0.0.1`. Leave it
    false if the origin is directly reachable, otherwise the header is
    spoofable.
+
+   If `setup-local.ps1` cannot route `goprilad.com` because an old proxied A
+   record exists, delete that A/AAAA record in the Cloudflare DNS dashboard and
+   re-run the setup. The tunnel should own CNAMEs for the apex (Cloudflare
+   flattens it), `www` and `track`.
 
 6. Run the whole stack with one command (Windows):
 
@@ -194,6 +197,43 @@ delivery window) appear on the campaign create/edit page. Any field left blank
 inherits the global default from `GET /settings`; values set on the campaign
 always override the default. Every setting carries helper text plus an
 **info pop-up** (click the ⓘ) explaining what it does and giving an example.
+
+## Public GoPriLad Site
+
+The public site is host-aware, not a separate app:
+
+| Host | Behaviour |
+| :--- | :--- |
+| `goprilad.com` | Home, about, register, sign in, verify, dashboard, privacy, terms, contact, robots/sitemap |
+| `www.goprilad.com` | 301 redirect to the canonical apex URL (GET/HEAD) |
+| `track.goprilad.com` | Existing mailer dashboard, APIs, tracking and webhooks; public site routes return 404 |
+
+Site accounts are separate from Supabase Auth. They use the `site_users` table
+(email + scrypt password hash), a single-use email confirmation token (only its
+SHA-256 hash is stored), and a signed Flask session cookie. Marketing consent is
+optional and unchecked; only verified, consenting, non-suppressed addresses are
+enrolled in the **Website Subscribers** list. The dashboard can change consent
+or unsubscribe, and suppressed addresses cannot be re-enabled by the form.
+
+Verification email is sent through Brevo's transactional API. When Telegram is
+configured, the operator also receives the registration notification with the
+verification link and a warning to forward it rather than click it. That link
+is a bearer credential: never log it or post it publicly.
+
+Configure the site with the `SITE_*` values in `.env` (see `.env.example`).
+For a local preview at `http://localhost:5000`, add `localhost,127.0.0.1` to
+`SITE_DOMAINS`, set `SITE_BASE_URL=http://localhost:5000`, and use
+`PUBLIC_BASE_URL=http://localhost:5000` so the dev session cookie is not
+`Secure`. Otherwise the site is served on the configured public hosts only. Legal pages use
+`SITE_OPERATOR_NAME` and `SITE_POSTAL_ADDRESS`; set a real postal address before
+launch. The news feed URLs are configurable, cached briefly, and
+shown only as attributed headline/excerpt links to the original publisher.
+
+Run the site tests with:
+
+```bash
+pytest tests/test_site.py tests/test_site_news.py
+```
 
 ## Campaign Sending Controls
 
@@ -270,6 +310,10 @@ signed Flask session cookie.
   `PUBLIC_BASE_URL/auth/callback` to the allowed redirect URLs.
 - CSRF protection (Flask-WTF) is enabled for browser mutations; public
   webhook/tracking endpoints are exempt.
+- **Public site accounts are a separate system.** `goprilad.com` uses
+  email/password sign-in backed by `site_users`; `track.goprilad.com` keeps the
+  Supabase magic-link allowlist above. A public-site session cannot access the
+  mailer, and the mailer session cannot access the site dashboard.
 
 ## API Endpoints
 
@@ -392,6 +436,9 @@ A legacy `X-Brevo-Signature` HMAC is still accepted when present.
 - `sql/10_remove_qev.sql` — drops the retired `contacts.qev_result` column.
 - `sql/11_campaign_reuse.sql` — `campaigns.reuse_root_id` (+ index) so cloned /
   resent campaigns share a lineage and contacts are de-duplicated per thread.
+- `sql/21_site_accounts.sql` — `site_users` for public email/password accounts,
+  single-use verification token hashes, consent audit fields and an optional
+  link to the matching `contacts` row.
 
 ## Tests
 

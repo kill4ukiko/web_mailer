@@ -1,0 +1,15 @@
+Confirm your GoPriLad account
+
+Thanks for creating a GoPriLad account for {{ email }}.
+
+Open this link to confirm your address and activate your account:
+{{ verification_url }}
+
+This link expires in {{ expires_hours }} hours and can be used once.
+
+If you did not create this account, ignore this email. The address will remain unverified.
+
+News email is optional and is only sent if you explicitly opted in.
+
+{{ operator_name }}
+{{ support_email }}

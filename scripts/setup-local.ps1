@@ -10,7 +10,8 @@
       3. Download portable tools into .tools\ (Redis for Windows, cloudflared).
       4. Create .env from .env.example (then warn about placeholders).
       5. Apply database migrations + seed settings (app.cron bootstrap).
-      6. Set up the Cloudflare named tunnel for track.goprilad.com.
+      6. Set up the Cloudflare named tunnel for track.goprilad.com and the
+         public site on goprilad.com / www.goprilad.com.
 
 .PARAMETER SkipTools
     Do not download Redis / cloudflared.
@@ -47,7 +48,10 @@ $RedisSha256 = '7C8CEBD50347EAA1D9E784DA842ED47A4F33394637835531D6614777B950EE85
 $CfUrl       = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe'
 
 $TunnelName  = 'webmailer'
-$PublicHost  = 'track.goprilad.com'
+$TrackHost   = 'track.goprilad.com'
+$SiteHost    = 'goprilad.com'
+$SiteWwwHost = 'www.goprilad.com'
+$PublicHosts = @($TrackHost, $SiteHost, $SiteWwwHost)
 
 # --- Helpers -------------------------------------------------------------------
 function Write-Step([string]$m) { Write-Host "`n== $m" -ForegroundColor Cyan }
@@ -184,7 +188,7 @@ try {
 
 # --- 5. Cloudflare named tunnel ------------------------------------------------
 if (-not $SkipTunnel) {
-    Write-Step "Cloudflare tunnel ($PublicHost)"
+    Write-Step "Cloudflare tunnel ($($PublicHosts -join ', '))"
     # cloudflared writes progress to stderr; don't let that abort the script.
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -239,18 +243,24 @@ if (-not $SkipTunnel) {
         Write-Ok "credentials present: $credFile"
     }
 
-    Write-Host "   routing DNS $PublicHost -> tunnel '$TunnelName'"
-    & $CfExe tunnel route dns $TunnelName $PublicHost
-    if ($LASTEXITCODE -ne 0) { Write-Warn "DNS route returned non-zero (often harmless if the record already exists)." }
+    foreach ($hostname in $PublicHosts) {
+        Write-Host "   routing DNS $hostname -> tunnel '$TunnelName'"
+        & $CfExe tunnel route dns $TunnelName $hostname
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn "DNS route for $hostname returned non-zero. If an old A/AAAA record exists, delete it in Cloudflare DNS and re-run."
+        }
+    }
 
     $cfg = @(
         "tunnel: $tunnelId",
         "credentials-file: $credFile",
-        "ingress:",
-        "  - hostname: $PublicHost",
-        "    service: http://127.0.0.1:5000",
-        "  - service: http_status:404"
+        "ingress:"
     )
+    foreach ($hostname in $PublicHosts) {
+        $cfg += "  - hostname: $hostname"
+        $cfg += "    service: http://127.0.0.1:5000"
+    }
+    $cfg += "  - service: http_status:404"
     [System.IO.File]::WriteAllText($CfConfig, ($cfg -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
     Write-Ok "wrote $CfConfig"
     $ErrorActionPreference = $prevEAP
@@ -264,10 +274,11 @@ Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Edit .env  -> set AUTH_ALLOWED_EMAILS (and any secrets)."
 Write-Host "  2. Set the public base URL (once):"
 Write-Host "       .\env\Scripts\python.exe -m app.cron bootstrap"
-Write-Host "     then in the app's Settings page set Public base URL to https://$PublicHost"
+Write-Host "     then in the app's Settings page set Public base URL to https://$TrackHost"
 Write-Host "  3. Register the Brevo webhook:"
-Write-Host "       https://$PublicHost/api/webhooks/brevo?token=<BREVO_WEBHOOK_SECRET>"
-Write-Host "  4. Start everything:  .\run-local.bat"
+Write-Host "       https://$TrackHost/api/webhooks/brevo?token=<BREVO_WEBHOOK_SECRET>"
+Write-Host "  4. Confirm the public site answers on https://$SiteHost and redirects from https://$SiteWwwHost"
+Write-Host "  5. Start everything:  .\run-local.bat"
 Write-Host ""
 
 # --- Verify --------------------------------------------------------------------

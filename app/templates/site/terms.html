@@ -1,0 +1,42 @@
+{% extends "site/base.html" %}
+{% block title %}Terms of use — GoPriLad{% endblock %}
+{% block description %}The rules for using the GoPriLad website and account.{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="wrap narrow">
+    <p class="eyebrow">Terms</p>
+    <h1>Terms of use</h1>
+    <p class="muted">Last updated {{ site_terms_version }}</p>
+  </div>
+</section>
+<section class="prose-section">
+  <div class="wrap narrow prose">
+    <p>These terms govern your use of goprilad.com and any GoPriLad account. By creating an account or using the site, you agree to them. If you do not agree, please do not use the site.</p>
+
+    <h2>The service</h2>
+    <p>GoPriLad presents headlines and short excerpts from public news feeds and links to the original publishers. We do not control those publishers, and their content, availability and terms are their responsibility. We may change, suspend or discontinue any part of the site.</p>
+
+    <h2>Your account</h2>
+    <p>You must provide an email address you are entitled to use, choose a strong password, and keep your sign-in details secure. You are responsible for activity under your account. Tell us promptly at <a href="mailto:{{ site_support_email }}">{{ site_support_email }}</a> if you believe it has been compromised.</p>
+    <p>Accounts require email confirmation. We may refuse, suspend or close an account that breaches these terms, is used for abuse or spam, or creates a security or legal risk.</p>
+
+    <h2>News email</h2>
+    <p>News email is optional. If you opt in, you confirm that you want to receive occasional GoPriLad news emails at the address you registered. You can unsubscribe at any time using the link in an email or the preference control in your dashboard. We honour suppression requests.</p>
+
+    <h2>Acceptable use</h2>
+    <p>Do not attempt to break into accounts, probe or overload the site, scrape it at a disruptive rate, send spam, impersonate another person, or use the site to break the law. Do not misrepresent GoPriLad content as your own or remove attribution from publisher links.</p>
+
+    <h2>Intellectual property</h2>
+    <p>The GoPriLad name, design and original site content belong to us or our licensors. Headlines, excerpts, images and articles linked from the site belong to their respective publishers. Your use of that material is governed by the publisher’s terms.</p>
+
+    <h2>Availability and liability</h2>
+    <p>The site is provided on an “as available” basis. News feeds can fail or be delayed, and we do not guarantee uninterrupted access or that every item is accurate or current. To the fullest extent permitted by law, we are not liable for indirect or consequential loss arising from your use of the site or reliance on linked content. Nothing in these terms excludes liability that cannot lawfully be excluded.</p>
+
+    <h2>Privacy</h2>
+    <p>Our <a href="{{ url_for('site.privacy_page') }}">privacy policy</a> explains how we handle your personal data and forms part of these terms.</p>
+
+    <h2>General</h2>
+    <p>If any provision is found unenforceable, the rest remains in effect. These terms are governed by the laws applicable to the operator of GoPriLad, without affecting any mandatory consumer rights you may have. Questions: <a href="mailto:{{ site_support_email }}">{{ site_support_email }}</a>.</p>
+  </div>
+</section>
+{% endblock %}

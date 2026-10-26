@@ -1,0 +1,51 @@
+{% extends "site/base.html" %}
+{% block title %}Create your GoPriLad account{% endblock %}
+{% block content %}
+<section class="auth-section">
+  <div class="wrap auth-grid">
+    <div class="auth-copy">
+      <p class="eyebrow">Join GoPriLad</p>
+      <h1>One account. A calmer news habit.</h1>
+      <p class="lede">Create a free account to read the daily headlines and, if you choose, receive occasional news emails.</p>
+      <ul class="check-list">
+        <li>Email confirmation keeps your account secure</li>
+        <li>News email is optional and unchecked</li>
+        <li>Unsubscribe whenever you like</li>
+      </ul>
+    </div>
+    <div class="auth-card">
+      <h2>Create account</h2>
+      {% if error %}<div class="form-error" role="alert">{{ error }}</div>{% endif %}
+      <form method="post" action="{{ url_for('site.register_submit') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="hp-field" aria-hidden="true">
+          <label for="website">Leave this field empty</label>
+          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" required value="{{ form.email if form.email else '' }}" placeholder="you@example.com">
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" minlength="10" required>
+        <p class="field-note">At least 10 characters. A passphrase is ideal.</p>
+
+        <label for="confirm_password">Confirm password</label>
+        <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" minlength="10" required>
+
+        <label class="check-row">
+          <input type="checkbox" name="marketing_consent" {% if form.marketing_consent %}checked{% endif %}>
+          <span>Send me occasional GoPriLad news emails. (Optional — you can use the site without this.)</span>
+        </label>
+
+        <label class="check-row">
+          <input type="checkbox" name="terms_accepted" required {% if form.terms_accepted %}checked{% endif %}>
+          <span>I agree to the <a href="{{ url_for('site.terms_page') }}">terms</a> and <a href="{{ url_for('site.privacy_page') }}">privacy policy</a>.</span>
+        </label>
+
+        <button class="button button-wide" type="submit">Create my account</button>
+      </form>
+      <p class="auth-switch">Already have an account? <a href="{{ url_for('auth.login_page') }}">Sign in</a></p>
+    </div>
+  </div>
+</section>
+{% endblock %}

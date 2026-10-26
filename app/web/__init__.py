@@ -32,7 +32,13 @@ def _count(table: str, **eq_filters: str) -> int:
 
 @bp.get("/")
 def home():
-    """Channel chooser: pick the email or SMS workspace."""
+    """Public site home on the base domain; channel chooser on the mailer host."""
+    from app.core.hosts import is_site_request
+
+    if is_site_request():
+        from app.site.views import home_page
+
+        return home_page()
     return render_template("chooser.html")
 
 
@@ -154,7 +160,14 @@ def settings_page():
 
 @bp.get("/about")
 def about_page():
-    """Operator guide: setup instructions + live configuration values."""
+    """Public about page on the base domain; operator guide on the mailer host."""
+    from app.core.hosts import is_site_request
+
+    if is_site_request():
+        from app.site.views import about_page as public_about_page
+
+        return public_about_page()
+
     from app.api.settings import merged_settings
     from app.config import get_settings
     from app.core.mailer_config import effective_base_url

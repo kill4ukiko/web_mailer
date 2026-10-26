@@ -103,6 +103,30 @@ class Settings(BaseSettings):
     # to BASE_URL, but sending is blocked while that is a local/private URL.
     public_base_url: str | None = None
 
+    # Public GoPriLad website. The base domain is public; the public_base_url
+    # host remains the mailer/tracking workspace.
+    site_base_url: str = "https://goprilad.com"
+    site_domains: str = "goprilad.com,www.goprilad.com"
+    site_from_email: str = "news@goprilad.com"
+    site_from_name: str = "GoPriLad"
+    site_reply_to_email: str = "support@goprilad.com"
+    site_verification_ttl_hours: int = 48
+    site_email_timeout_seconds: int = 10
+    site_password_min_length: int = 10
+    site_consent_version: str = "2026-10-25"
+    site_terms_version: str = "2026-10-25"
+    site_privacy_version: str = "2026-10-25"
+    site_operator_name: str = "GoPriLad"
+    site_postal_address: str = ""
+    site_telegram_notifications: bool = True
+    site_news_cache_seconds: int = 600
+    site_news_timeout_seconds: int = 8
+    site_news_feeds: str = (
+        "BBC World|https://feeds.bbci.co.uk/news/world/rss.xml,"
+        "The Guardian World|https://www.theguardian.com/world/rss,"
+        "NPR World|https://feeds.npr.org/1004/rss.xml"
+    )
+
     # Authentication (Supabase magic link). Comma-separated allowlist. When the
     # allowlist is empty every login is refused (fail closed). Set
     # AUTH_REQUIRED=false only for local development. Use ``allowed_emails``
@@ -146,6 +170,38 @@ class Settings(BaseSettings):
         """Parsed, lower-cased allowlist (empty when unset)."""
         raw = (self.auth_allowed_emails or "").replace(";", ",").replace("\n", ",")
         return [part.strip().lower() for part in raw.split(",") if part.strip()]
+
+    @property
+    def site_domain_list(self) -> list[str]:
+        """Parsed, lower-cased public website hostnames."""
+        raw = (self.site_domains or "").replace(";", ",").replace("\n", ",")
+        hosts = {part.strip().lower() for part in raw.split(",") if part.strip()}
+        from urllib.parse import urlsplit
+
+        base_host = (urlsplit(self.site_base_url).hostname or "").lower()
+        if base_host:
+            hosts.add(base_host)
+            if not base_host.startswith("www."):
+                hosts.add(f"www.{base_host}")
+        return sorted(hosts)
+
+    @property
+    def site_news_feed_list(self) -> list[tuple[str, str]]:
+        """Parsed ``(source name, feed URL)`` pairs."""
+        feeds: list[tuple[str, str]] = []
+        for entry in (self.site_news_feeds or "").split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "|" in entry:
+                name, url = entry.split("|", 1)
+            else:
+                name, url = "News", entry
+            name = name.strip() or "News"
+            url = url.strip()
+            if url.startswith(("http://", "https://")):
+                feeds.append((name, url))
+        return feeds
 
 
 @lru_cache

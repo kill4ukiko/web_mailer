@@ -50,6 +50,7 @@ class BrevoClient:
         headers: dict[str, str] | None = None,
         sender_account: dict[str, Any] | None = None,
         reply_to: str | None = None,
+        timeout: int = 30,
     ) -> str:
         """Send a single transactional email via POST /smtp/email.
 
@@ -69,7 +70,10 @@ class BrevoClient:
             payload["headers"] = headers
 
         resp = requests.post(
-            f"{self.base_url}/smtp/email", json=payload, headers=self._headers, timeout=30
+            f"{self.base_url}/smtp/email",
+            json=payload,
+            headers=self._headers,
+            timeout=max(1, int(timeout)),
         )
         if resp.status_code not in (200, 201):
             try:

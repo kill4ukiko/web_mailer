@@ -7,7 +7,7 @@ rem    1. Redis            (skipped if already listening on :6379)
 rem    2. Web / API        (Flask via waitress)  http://127.0.0.1:5000
 rem    3. Celery worker
 rem    4. Celery beat
-rem    5. Cloudflare tunnel  ->  https://track.goprilad.com
+rem    5. Cloudflare tunnel  ->  track + goprilad.com + www
 rem
 rem  All paths are relative to this file, so the project can be moved to
 rem  another computer. Run setup-local.bat first on a fresh machine.
@@ -23,7 +23,9 @@ set "WAITRESS=%PY%\waitress-serve.exe"
 set "CELERY=%PY%\celery.exe"
 set "CLOUDFLARED=%~dp0.tools\cloudflared\cloudflared.exe"
 set "CF_CONFIG=%~dp0.tools\cloudflared\config.yml"
+set "CLOUDFLARED_CONFIG=%CF_CONFIG%"
 set "PUBLIC_URL=https://track.goprilad.com"
+set "SITE_URL=https://goprilad.com"
 
 rem --- locate redis-server.exe anywhere under .tools\redis ----------------
 set "REDIS_EXE="
@@ -83,7 +85,7 @@ if not exist "%CLOUDFLARED%" (
         echo WARNING: tunnel credentials missing: !CF_CRED!
         echo          Run setup-local.bat to create them. Skipping tunnel.
       ) else (
-        echo Starting Cloudflare tunnel supervisor ^(%PUBLIC_URL%^) ...
+        echo Starting Cloudflare tunnel supervisor ^(mailer + public site^) ...
         start "Tunnel" /min "%PY%\python.exe" "%~dp0scripts\tunnel_watch.py"
       )
     )
@@ -110,7 +112,8 @@ if defined API_UP (
 )
 echo   Web:      http://127.0.0.1:5000
 echo   API:      http://127.0.0.1:5000/api/health
-echo   Public:   %PUBLIC_URL%
+echo   Mailer:   %PUBLIC_URL%
+echo   Site:     %SITE_URL%
 echo   Redis:    localhost:6379
 echo.
 echo Close a component's window to stop it, or run stop-local.bat.

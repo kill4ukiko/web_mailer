@@ -1,0 +1,26 @@
+{% extends "site/base.html" %}
+{% block title %}Check your email - GoPriLad{% endblock %}
+{% block robots %}<meta name="robots" content="noindex,nofollow">{% endblock %}
+{% block content %}
+<section class="auth-section">
+  <div class="wrap narrow">
+    <div class="message-card">
+      <p class="eyebrow">Almost there</p>
+      <h1>Check your email.</h1>
+      {% if email %}<p class="lede">We sent a confirmation link to <strong>{{ email }}</strong>.</p>{% endif %}
+      <p>Open the link to confirm your address and finish creating your account. The link expires in {{ site_verification_ttl_hours }} hours.</p>
+      {% if already_pending %}
+        <p>This address already has an unverified account. If the message did not arrive, request a fresh link.</p>
+      {% endif %}
+      {% if email_failed %}
+        <div class="form-error" role="alert">We could not send the email just now. Your account is still pending. Try resending the link, or contact <a href="mailto:{{ site_support_email }}">{{ site_support_email }}</a>.</div>
+      {% endif %}
+      <div class="button-row">
+        <a class="button" href="{{ url_for('site.resend_page') }}">Resend confirmation</a>
+        <a class="button button-ghost" href="{{ url_for('auth.login_page') }}">Go to sign in</a>
+      </div>
+      <p class="field-note">If you do not see the email, check your spam folder. Only addresses that complete verification are activated.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

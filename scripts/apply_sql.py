@@ -37,6 +37,7 @@ ORDER = [
     "18_bird_sms.sql",
     "19_atomic_stats.sql",
     "20_safety_fixes.sql",
+    "21_site_accounts.sql",
 ]
 
 _TRACKING_TABLE_SQL = """

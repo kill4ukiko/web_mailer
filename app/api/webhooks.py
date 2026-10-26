@@ -3,14 +3,18 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 
 from flask import Blueprint, current_app, jsonify, request
 from pydantic import ValidationError
 
 from app.core.brevo import BrevoClient
+from app.core.site_store import revoke_site_user_consent
 from app.core.supabase_client import get_supabase
 from app.extensions import limiter
 from app.schemas.webhooks import BrevoEvent
+
+logger = logging.getLogger(__name__)
 
 bp = Blueprint("webhooks", __name__, url_prefix="/api/webhooks")
 
@@ -180,6 +184,13 @@ def brevo_webhook():
                 suppressed = True
             elif event.event == "soft_bounce":
                 suppressed = _apply_soft_bounce_policy(supabase, event)
+            if suppressed and event.email:
+                try:
+                    revoke_site_user_consent(event.email)
+                except Exception:  # noqa: BLE001 - never fail a webhook for site sync
+                    logger.warning(
+                        "site consent sync failed for %s", event.email, exc_info=True
+                    )
 
             if event.event == "unsubscribe":
                 _notify_unsubscribe(supabase, event)

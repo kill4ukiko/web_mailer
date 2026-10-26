@@ -5,7 +5,7 @@ import hashlib
 import time
 from pathlib import Path
 
-from flask import Flask, jsonify, redirect, request, url_for
+from flask import Flask, abort, jsonify, redirect, request, url_for
 
 from app.config import get_settings
 
@@ -33,6 +33,37 @@ _GUARD_EXEMPT_PREFIXES = (
 # Cached Redis reachability (checked at most once per _REDIS_CHECK_TTL seconds).
 _REDIS_CHECK_TTL = 5.0
 _redis_check: dict[str, float | bool] = {"ok": True, "at": 0.0}
+
+
+_PUBLIC_SITE_READ_ENDPOINTS = {
+    "web.home",
+    "web.about_page",
+    "auth.login_page",
+    "site.register_page",
+    "site.contact_page",
+    "site.privacy_page",
+    "site.terms_page",
+    "site.robots",
+    "site.sitemap",
+}
+
+
+_NO_STORE_ENDPOINTS = {
+    "auth.login_page",
+    "site.dashboard",
+    "site.login_submit",
+    "site.register_page",
+    "site.register_submit",
+    "site.resend_page",
+    "site.resend_submit",
+    "site.verify_email_page",
+    "site.verify_email_submit",
+}
+
+
+def _public_site_read_only(endpoint: str | None, method: str) -> bool:
+    """Read-only public pages stay online if the rate-limit datastore drops."""
+    return method in ("GET", "HEAD") and endpoint in _PUBLIC_SITE_READ_ENDPOINTS
 
 
 def _redis_guard_exempt(endpoint: str | None) -> bool:
@@ -74,6 +105,7 @@ def create_app(config_object: object | None = None) -> Flask:
 
     register_extensions(app)
     register_blueprints(app)
+    register_site_host_scope(app)
     register_auth_guard(app)
     register_redis_guard(app)
     register_security_headers(app)
@@ -110,8 +142,8 @@ def validate_startup_config(app: Flask) -> list[str]:
 
     # A public HTTPS deployment is reachable by anyone: it must not run without
     # sign-in, and the browser needs the anon key for Supabase Auth.
-    public_url = str(settings.public_base_url or settings.base_url or "")
-    if public_url.lower().startswith("https://"):
+    public_url = (settings.public_base_url or settings.base_url or "").lower()
+    if public_url.startswith("https://"):
         if not settings.auth_required:
             problems.append(
                 "AUTH_REQUIRED must be true for a public HTTPS deployment"
@@ -156,12 +188,14 @@ def register_security_headers(app: Flask) -> None:
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
             )
+        if request.endpoint in _NO_STORE_ENDPOINTS:
+            response.headers["Cache-Control"] = "no-store"
         return response
 
 
 def _public_base_is_https(settings) -> bool:
-    url = (settings.public_base_url or settings.base_url or "").lower()
-    return url.startswith("https://")
+    public_url = (settings.public_base_url or settings.base_url or "").lower()
+    return public_url.startswith("https://")
 
 
 def register_extensions(app: Flask) -> None:
@@ -197,6 +231,7 @@ def register_blueprints(app: Flask) -> None:
     from app.api.tracking import bp as tracking_bp
     from app.api.webhooks import bp as webhooks_bp
     from app.extensions import csrf
+    from app.site import bp as site_bp
     from app.web import bp as web_bp
 
     app.register_blueprint(health_bp)
@@ -222,6 +257,7 @@ def register_blueprints(app: Flask) -> None:
     app.register_blueprint(sms_webhooks_bp)
     app.register_blueprint(bird_sms_webhooks_bp)
     app.register_blueprint(tracking_bp)
+    app.register_blueprint(site_bp)
     app.register_blueprint(web_bp)
 
     # Recipient-facing + provider callbacks carry their own tokens/HMAC and are
@@ -233,6 +269,46 @@ def register_blueprints(app: Flask) -> None:
     csrf.exempt(tracking_bp)
 
 
+def register_site_host_scope(app: Flask) -> None:
+    from app.core.hosts import (
+        canonical_site_url,
+        is_site_request,
+        is_track_request,
+        request_hostname,
+        site_base_hostname,
+    )
+
+    site_endpoints = {"web.home", "web.about_page", "auth.login_page"}
+    site_prefixes = ("site.",)
+
+    @app.before_request
+    def _scope_site_and_mailer():
+        endpoint = request.endpoint or ""
+        if is_site_request():
+            host = request_hostname()
+            base = site_base_hostname()
+            if (
+                base
+                and host.startswith("www.")
+                and host[4:] == base
+                and request.method in ("GET", "HEAD")
+            ):
+                path = request.full_path
+                if path.endswith("?"):
+                    path = path[:-1]
+                return redirect(canonical_site_url(path), code=301)
+            if (
+                endpoint in {"static", "health.health"}
+                or endpoint in site_endpoints
+                or endpoint.startswith(site_prefixes)
+            ):
+                return None
+            abort(404)
+        if is_track_request() and endpoint.startswith(site_prefixes):
+            abort(404)
+        return None
+
+
 def register_auth_guard(app: Flask) -> None:
     from app.api import auth
 
@@ -242,7 +318,7 @@ def register_auth_guard(app: Flask) -> None:
             return None
         endpoint = request.endpoint
         if endpoint in _PUBLIC_ENDPOINTS or (endpoint or "").startswith(
-            ("tracking.", "webhooks.", "sms_webhooks.", "bird_sms_webhooks.")
+            ("site.", "tracking.", "webhooks.", "sms_webhooks.", "bird_sms_webhooks.")
         ):
             return None
         if request.path.startswith("/api/"):
@@ -262,6 +338,8 @@ def register_redis_guard(app: Flask) -> None:
     """
     import redis as redis_py
 
+    from app.core.hosts import is_site_request
+
     @app.before_request
     def _fail_closed_without_redis():
         if app.config.get("TESTING"):
@@ -272,7 +350,9 @@ def register_redis_guard(app: Flask) -> None:
             return None
 
         endpoint = request.endpoint
-        if _redis_guard_exempt(endpoint):
+        if _redis_guard_exempt(endpoint) or (
+            _public_site_read_only(endpoint, request.method) and is_site_request()
+        ):
             return None
 
         now = time.time()
@@ -320,6 +400,9 @@ def _static_version(app: Flask) -> str:
 
 def register_context(app: Flask) -> None:
     from app.api import auth
+    from app.site.auth import current_site_user
+
+    settings = app.config["SETTINGS"]
 
     @app.context_processor
     def _inject_auth():
@@ -327,4 +410,12 @@ def register_context(app: Flask) -> None:
             "auth_user": auth.current_user(),
             "auth_required": auth.auth_required(),
             "asset_version": _static_version(app),
+            "site_user": current_site_user(),
+            "site_base_url": str(settings.site_base_url or "").rstrip("/"),
+            "site_operator_name": settings.site_operator_name,
+            "site_postal_address": settings.site_postal_address,
+            "site_support_email": settings.site_reply_to_email,
+            "site_verification_ttl_hours": settings.site_verification_ttl_hours,
+            "site_terms_version": settings.site_terms_version,
+            "site_privacy_version": settings.site_privacy_version,
         }

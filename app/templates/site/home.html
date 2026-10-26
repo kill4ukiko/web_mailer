@@ -1,0 +1,71 @@
+{% extends "site/base.html" %}
+{% block title %}GoPriLad — World news, without the noise{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Independent world news</p>
+      <h1>Stay informed.<br>Skip the noise.</h1>
+      <p class="lede">A clear view of the stories shaping the world, gathered from trusted public feeds and delivered without the outrage machine.</p>
+      <div class="hero-actions">
+        {% if site_user %}
+          <a class="button" href="{{ url_for('site.dashboard') }}">Your dashboard</a>
+        {% else %}
+          <a class="button" href="{{ url_for('site.register_page') }}">Create a free account</a>
+          <a class="button button-ghost" href="{{ url_for('auth.login_page') }}">Sign in</a>
+        {% endif %}
+      </div>
+      <p class="micro">Optional news emails. Unsubscribe any time. No ad tracking.</p>
+    </div>
+    <aside class="hero-card">
+      <span class="card-label">Today’s briefing</span>
+      <h2>One account.<br>A quieter inbox.</h2>
+      <ul class="check-list">
+        <li>World headlines from public RSS feeds</li>
+        <li>Email only if you explicitly opt in</li>
+        <li>Verification before anything is sent</li>
+        <li>Clear privacy and easy unsubscribe</li>
+      </ul>
+    </aside>
+  </div>
+</section>
+
+<section class="news-section">
+  <div class="wrap">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">World news</p>
+        <h2>Latest headlines</h2>
+      </div>
+      <p class="section-note">Headlines and short excerpts link to the original publisher. GoPriLad does not rewrite or claim ownership of their reporting.</p>
+    </div>
+    {% if news %}
+      <div class="news-grid">
+        {% for item in news %}
+          <article class="news-card">
+            <p class="news-source">{{ item.source }}{% if item.published_display %} · {{ item.published_display }}{% endif %}</p>
+            <h3><a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.title }}</a></h3>
+            {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
+            <a class="read-link" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Read at {{ item.source }} →</a>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <h3>Headlines are taking a short break</h3>
+        <p>We could not reach the news feeds just now. Please check back in a few minutes.</p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="join-band">
+  <div class="wrap join-inner">
+    <div>
+      <p class="eyebrow">Stay in the loop</p>
+      <h2>A brief, honest update — only when you ask for it.</h2>
+    </div>
+    <a class="button button-light" href="{{ url_for('site.register_page') }}">Join GoPriLad</a>
+  </div>
+</section>
+{% endblock %}

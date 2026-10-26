@@ -1,0 +1,61 @@
+{% extends "site/base.html" %}
+{% block title %}Privacy policy — GoPriLad{% endblock %}
+{% block description %}How GoPriLad collects, uses and protects your account and email data.{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="wrap narrow">
+    <p class="eyebrow">Privacy</p>
+    <h1>Privacy policy</h1>
+    <p class="muted">Last updated {{ site_privacy_version }}</p>
+  </div>
+</section>
+<section class="prose-section">
+  <div class="wrap narrow prose">
+    <p>This policy explains how {{ site_operator_name }} (“GoPriLad”, “we”, “us”) handles personal data when you use goprilad.com and create an account. It does not cover the independent news publishers we link to; their own policies apply when you visit them.</p>
+
+    <h2>Who is responsible</h2>
+    <p>The data controller is {{ site_operator_name }}. You can contact us at <a href="mailto:{{ site_support_email }}">{{ site_support_email }}</a>{% if site_postal_address %}, or by post at {{ site_postal_address }}{% endif %}.</p>
+
+    <h2>What we collect</h2>
+    <ul>
+      <li><strong>Account data:</strong> your email address, a securely hashed password, account status and confirmation timestamps.</li>
+      <li><strong>Consent records:</strong> whether you opted in to news email, the policy version you accepted, and the time, IP address and browser user agent associated with that choice.</li>
+      <li><strong>Technical data:</strong> essential session and security cookies, plus ordinary server logs needed to operate and protect the site.</li>
+      <li><strong>Newsletter data:</strong> if you opt in, your email address and subscription status in our mailing list, including bounces, complaints and unsubscribe events.</li>
+    </ul>
+    <p>We do not ask for your name, phone number, payment details or postal address in order to use the site. We do not use advertising trackers on this site.</p>
+
+    <h2>Why we use it</h2>
+    <ul>
+      <li>To create, verify and secure your account, and to let you sign in.</li>
+      <li>To honour your news-email choice and to send occasional news emails when you have opted in.</li>
+      <li>To keep records of consent and unsubscribe requests, and to suppress addresses that should not be contacted.</li>
+      <li>To operate, troubleshoot and protect the site from abuse.</li>
+    </ul>
+    <p>Our lawful bases are performance of a contract (providing your account), consent (news email and optional consent records), and our legitimate interests in operating a secure, reliable service. You can withdraw consent at any time; this does not affect processing that happened before withdrawal.</p>
+
+    <h2>Who we share it with</h2>
+    <p>We use service providers to run the site and email. These include hosting and database providers (including Supabase), Cloudflare for network and tunnel services, and Brevo for transactional and newsletter email. Our operator may also receive a registration notification through Telegram. Providers act on our instructions and are bound by their own data-processing terms. We do not sell personal data.</p>
+    <p>We may disclose data if required by law, or where necessary to protect the rights, safety or security of the site, our users or others.</p>
+
+    <h2>International transfers</h2>
+    <p>Our providers may process data in countries other than yours. Where required, we rely on appropriate safeguards such as standard contractual clauses offered by those providers.</p>
+
+    <h2>How long we keep it</h2>
+    <p>We keep account and consent records while your account is active and for a reasonable period afterwards to meet legal, security and suppression obligations. Unverified accounts may be removed after a period of inactivity. Unsubscribe and suppression records are kept so that we can continue to honour your choice.</p>
+
+    <h2>Your rights</h2>
+    <p>Depending on where you live, you may have the right to access, correct or delete your personal data, to restrict or object to processing, to withdraw consent, to receive a portable copy, and to complain to a supervisory authority.</p>
+    <p>To exercise a right, email <a href="mailto:{{ site_support_email }}">{{ site_support_email }}</a>. We may need to confirm your identity before acting. You can unsubscribe from news email using the link in any marketing email or the preference control in your dashboard.</p>
+
+    <h2>Cookies</h2>
+    <p>We use essential cookies only: a signed session cookie to keep you signed in and a security token to protect forms against cross-site request forgery. We do not use advertising or cross-site tracking cookies. Blocking essential cookies may prevent sign-in.</p>
+
+    <h2>Children</h2>
+    <p>The site is not directed at children under 16, and we do not knowingly create accounts for them.</p>
+
+    <h2>Changes</h2>
+    <p>We may update this policy. Material changes will be reflected by the “last updated” date and, where appropriate, an additional notice or consent request.</p>
+  </div>
+</section>
+{% endblock %}

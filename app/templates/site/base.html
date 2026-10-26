@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}GoPriLad{% endblock %}</title>
+  <meta name="description" content="{% block description %}GoPriLad brings you clear, independent world news and a calmer daily briefing.{% endblock %}">
+  {% block robots %}<meta name="robots" content="index,follow">{% endblock %}
+  <link rel="icon" href="{{ url_for('static', filename='site-favicon.svg') }}?v={{ asset_version }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='site.css') }}?v={{ asset_version }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ url_for('web.home') }}" aria-label="GoPriLad home">
+        <span class="brand-mark" aria-hidden="true">G</span>
+        <span>GoPriLad</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="{{ url_for('web.home') }}">News</a>
+        <a href="{{ url_for('web.about_page') }}">About</a>
+        <a href="{{ url_for('site.contact_page') }}">Contact</a>
+        {% if site_user %}
+          <a href="{{ url_for('site.dashboard') }}">Dashboard</a>
+        {% else %}
+          <a href="{{ url_for('auth.login_page') }}">Sign in</a>
+          <a class="nav-cta" href="{{ url_for('site.register_page') }}">Join</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="wrap flash-stack" role="status">
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-grid">
+      <div>
+        <div class="brand footer-brand">
+          <span class="brand-mark" aria-hidden="true">G</span>
+          <span>GoPriLad</span>
+        </div>
+        <p>Independent world news, a calmer briefing, and no noise.</p>
+      </div>
+      <div>
+        <h2>Explore</h2>
+        <a href="{{ url_for('web.about_page') }}">About</a>
+        <a href="{{ url_for('site.contact_page') }}">Contact</a>
+        <a href="{{ url_for('site.privacy_page') }}">Privacy</a>
+        <a href="{{ url_for('site.terms_page') }}">Terms</a>
+      </div>
+      <div>
+        <h2>Account</h2>
+        {% if site_user %}
+          <a href="{{ url_for('site.dashboard') }}">Your dashboard</a>
+        {% else %}
+          <a href="{{ url_for('auth.login_page') }}">Sign in</a>
+          <a href="{{ url_for('site.register_page') }}">Create account</a>
+        {% endif %}
+        <a href="mailto:{{ site_support_email }}">{{ site_support_email }}</a>
+      </div>
+    </div>
+    <div class="wrap footer-bottom">
+      <span>&copy; 2026 {{ site_operator_name }}</span>
+      {% if site_postal_address %}<span>{{ site_postal_address }}</span>{% endif %}
+    </div>
+  </footer>
+  <script src="{{ url_for('static', filename='site.js') }}?v={{ asset_version }}" defer></script>
+</body>
+</html>

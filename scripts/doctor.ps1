@@ -101,6 +101,14 @@ if (-not (Test-Path -LiteralPath $CfConfig)) {
             Fail "tunnel credentials missing at $cred - run setup-local.bat to (re)create them (this is what crash-loops cloudflared)"
         }
     }
+    foreach ($hostName in @('track.goprilad.com', 'goprilad.com', 'www.goprilad.com')) {
+        $pattern = 'hostname:\s*' + [regex]::Escape($hostName) + '\s*$'
+        if (Select-String -LiteralPath $CfConfig -Pattern $pattern -Quiet) {
+            Pass "tunnel ingress: $hostName"
+        } else {
+            Warn "tunnel ingress missing $hostName - re-run setup-local.bat"
+        }
+    }
 }
 
 # --- .env ----------------------------------------------------------------------
@@ -130,6 +138,14 @@ if (-not (Test-Path -LiteralPath $EnvFile)) {
     if ([string]::IsNullOrWhiteSpace($public) -or $public -match 'yourdomain|your-tunnel|example\.com') {
         Warn "PUBLIC_BASE_URL is empty/placeholder - tracking + unsubscribe links break"
     }
+    $siteBase = Get-EnvValue 'SITE_BASE_URL'
+    if ([string]::IsNullOrWhiteSpace($siteBase) -or $siteBase -match 'yourdomain|example\.com') {
+        Warn "SITE_BASE_URL is empty/placeholder - public site links and sitemap may be wrong"
+    }
+    $postal = Get-EnvValue 'SITE_POSTAL_ADDRESS'
+    if ([string]::IsNullOrWhiteSpace($postal)) {
+        Warn "SITE_POSTAL_ADDRESS is empty - fill it in before the public privacy page goes live"
+    }
 }
 
 # --- Database ------------------------------------------------------------------
@@ -157,6 +173,8 @@ if (Test-Path -LiteralPath $VenvPy) {
 Section 'Reminders (account-level, set once - not per machine)'
 Warn "Supabase dashboard: add your sign-in user + redirect URLs (https://track.goprilad.com/auth/callback, http://localhost:5000/auth/callback)"
 Warn "Brevo: register webhook https://track.goprilad.com/api/webhooks/brevo?token=<BREVO_WEBHOOK_SECRET>"
+Warn "Brevo: verify the site sender news@goprilad.com and keep transactional sending enabled"
+Warn "Cloudflare: goprilad.com and www.goprilad.com must use the tunnel CNAMEs (remove old apex A/AAAA records)"
 
 # --- Summary -------------------------------------------------------------------
 Write-Host ""

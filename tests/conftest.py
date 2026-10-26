@@ -16,6 +16,7 @@ class FakeClientTable:
         self._filters: list[tuple] = []
         self._count_requested = False
         self._delete = False
+        self._update_data: dict | None = None
 
     def select(self, *cols, count=None):
         if count:
@@ -73,6 +74,9 @@ class FakeClientTable:
             return D()
 
         rows = self._rows()
+        if self._update_data is not None:
+            for row in rows:
+                row.update(self._update_data)
 
         class R:
             data = rows
@@ -85,8 +89,7 @@ class FakeClientTable:
         return self
 
     def update(self, data):
-        for row in self._rows():
-            row.update(data)
+        self._update_data = dict(data)
         return self
 
     @property
@@ -133,6 +136,7 @@ class FakeSupabase:
 
     def __init__(self):
         self.contacts: list[dict[str, Any]] = []
+        self.site_users: list[dict[str, Any]] = []
         self.campaigns: list[dict[str, Any]] = []
         self.recipients: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
@@ -177,6 +181,8 @@ class FakeSupabase:
         def table(self, name):
             if name == "contacts":
                 return FakeClientTable(self._s.contacts)
+            if name == "site_users":
+                return FakeClientTable(self._s.site_users)
             if name == "campaigns":
                 return FakeClientTable(self._s.campaigns)
             if name == "campaign_recipients":

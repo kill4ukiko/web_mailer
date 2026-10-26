@@ -1,0 +1,41 @@
+{% extends "site/base.html" %}
+{% block title %}About GoPriLad{% endblock %}
+{% block description %}Why GoPriLad exists, what we send, and how we handle your email address.{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <div class="wrap narrow">
+    <p class="eyebrow">About</p>
+    <h1>Clear news. Calm delivery.</h1>
+    <p class="lede">GoPriLad is a small, independent project built around a simple idea: staying informed should not feel like drinking from a firehose.</p>
+  </div>
+</section>
+
+<section class="prose-section">
+  <div class="wrap two-col">
+    <div class="prose">
+      <h2>What GoPriLad is</h2>
+      <p>GoPriLad collects public world-news headlines from established publishers and presents them in one readable place. We link to the original reporting so you can read the full story at the source.</p>
+      <p>We do not pretend to replace those publishers, and we do not republish their articles as our own.</p>
+
+      <h2>What we send</h2>
+      <p>If you create an account and explicitly opt in, we may send occasional GoPriLad news emails. Marketing consent is optional and unchecked by default. You can use the site without receiving a single email.</p>
+      <p>Every account must confirm its email address before sign-in. Every marketing email includes a working unsubscribe path. Suppressed and unsubscribed addresses stay suppressed.</p>
+
+      <h2>How we handle your details</h2>
+      <p>We store your email address, a securely hashed password, and the consent records needed to prove what you agreed to. We do not sell your email address. We do not use advertising trackers on this site.</p>
+      <p>Read the <a href="{{ url_for('site.privacy_page') }}">privacy policy</a> for the full detail, including your rights and how to contact us.</p>
+    </div>
+    <aside class="aside-card">
+      <h2>The short version</h2>
+      <ul class="check-list">
+        <li>Public news feeds, clearly attributed</li>
+        <li>A free account, verified by email</li>
+        <li>News email is opt-in only</li>
+        <li>Unsubscribe and suppression are honoured</li>
+        <li>No ad tracking on this site</li>
+      </ul>
+      <a class="button" href="{{ url_for('site.register_page') }}">Create an account</a>
+    </aside>
+  </div>
+</section>
+{% endblock %}

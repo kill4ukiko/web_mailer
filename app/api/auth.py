@@ -88,7 +88,14 @@ def _safe_next(target: str | None) -> str:
 # --------------------------------------------------------------------------- #
 @bp.get("/login")
 def login_page():
-    """Magic-link sign-in page (client-side Supabase JS)."""
+    """Site password sign-in on the base domain; magic link on the mailer host."""
+    from app.core.hosts import is_site_request
+
+    if is_site_request():
+        from app.site.auth import login_page as site_login_page
+
+        return site_login_page()
+
     if is_authenticated():
         return redirect(_safe_next(request.args.get("next")))
     settings = get_settings()
