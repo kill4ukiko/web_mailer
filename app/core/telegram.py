@@ -187,6 +187,13 @@ class TelegramClient:
             logger.warning("telegram getUpdates failed: %s", exc)
             return []
         if not resp.ok:
+            if resp.status_code == 409:
+                logger.warning(
+                    "telegram getUpdates conflict: a webhook is active for this bot, so "
+                    "the command poller cannot receive updates. Delete the webhook or "
+                    "configure a dedicated bot token for this app."
+                )
+                return []
             logger.warning("telegram getUpdates error [%s]: %s", resp.status_code, resp.text[:300])
             return []
         try:

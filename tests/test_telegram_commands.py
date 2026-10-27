@@ -153,6 +153,55 @@ def test_help_lists_commands():
 # --------------------------------------------------------------------------- #
 # Poller
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Bot maintenance script
+# --------------------------------------------------------------------------- #
+def test_bot_info_reports_webhook_conflict(monkeypatch, capsys):
+    from app.core.telegram import TelegramConfig
+    from scripts import telegram_bot
+
+    monkeypatch.setattr(
+        telegram_bot, "_config",
+        lambda: TelegramConfig(token="t", chat_id="42"),
+    )
+    monkeypatch.setattr(
+        telegram_bot, "_call",
+        lambda token, method, **p: (
+            {"username": "bot", "first_name": "Bot"}
+            if method == "getMe"
+            else {"url": "https://other.example/hook", "pending_update_count": 0}
+        ),
+    )
+
+    assert telegram_bot.main(["info"]) == 0
+    out = capsys.readouterr().out
+    assert "https://other.example/hook" in out
+    assert "DISABLED" in out
+
+
+def test_bot_use_polling_requires_confirmation(monkeypatch, capsys):
+    from app.core.telegram import TelegramConfig
+    from scripts import telegram_bot
+
+    deleted: list[str] = []
+    monkeypatch.setattr(
+        telegram_bot, "_config",
+        lambda: TelegramConfig(token="t", chat_id="42"),
+    )
+    monkeypatch.setattr(
+        telegram_bot, "_call",
+        lambda token, method, **p: (
+            {"url": "https://other.example/hook"}
+            if method == "getWebhookInfo"
+            else deleted.append(method) or {}
+        ),
+    )
+
+    assert telegram_bot.main(["use-polling"]) == 1
+    assert deleted == []
+    assert "Re-run with --yes" in capsys.readouterr().err
+
+
 def test_poll_once_replies_only_in_the_configured_chat(supabase, monkeypatch):
     from app.core import telegram as telegram_module
     from app.core import telegram_commands
