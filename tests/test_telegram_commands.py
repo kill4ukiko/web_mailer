@@ -202,6 +202,27 @@ def test_bot_use_polling_requires_confirmation(monkeypatch, capsys):
     assert "Re-run with --yes" in capsys.readouterr().err
 
 
+def test_bot_chats_lists_pending_chat_ids(monkeypatch, capsys):
+    from app.core.telegram import TelegramConfig
+    from scripts import telegram_bot
+
+    monkeypatch.setattr(
+        telegram_bot, "_config",
+        lambda: TelegramConfig(token="t", chat_id=""),
+    )
+    monkeypatch.setattr(
+        telegram_bot, "_call",
+        lambda token, method, **p: [
+            {"update_id": 1, "message": {"chat": {"id": 42, "first_name": "Ada"}}}
+        ],
+    )
+
+    assert telegram_bot.main(["chats"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("42\t")
+    assert "Ada" in out
+
+
 def test_poll_once_replies_only_in_the_configured_chat(supabase, monkeypatch):
     from app.core import telegram as telegram_module
     from app.core import telegram_commands

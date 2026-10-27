@@ -8,7 +8,11 @@ either get a dedicated token or have its webhook removed.
 Usage::
 
     python -m scripts.telegram_bot info
+    python -m scripts.telegram_bot chats
     python -m scripts.telegram_bot use-polling --yes
+
+``chats`` lists chats that recently messaged the bot, which is the easiest way
+to find the numeric ``TELEGRAM_CHAT_ID`` for a new bot.
 
 ``use-polling`` calls ``deleteWebhook`` and is therefore explicit: it takes the
 bot away from any other service currently receiving its updates.
@@ -17,13 +21,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Any
 
 import requests
 
 from app.core.telegram import resolve_telegram
 
 
-def _call(token: str, method: str, **params) -> dict:
+def _call(token: str, method: str, **params) -> Any:
     url = f"https://api.telegram.org/bot{token}/{method}"
     resp = requests.post(url, json=params or None, timeout=20)
     try:
@@ -33,6 +38,7 @@ def _call(token: str, method: str, **params) -> dict:
     if not payload.get("ok"):
         raise RuntimeError(f"{method} failed [{resp.status_code}]: {payload.get('description')}")
     return payload.get("result") or {}
+
 
 
 def _config():
@@ -59,6 +65,36 @@ def cmd_info(_args) -> int:
     return 0
 
 
+def cmd_chats(_args) -> int:
+    config = _config()
+    updates = _call(config.token, "getUpdates", timeout=0, limit=100)
+    if not isinstance(updates, list):
+        updates = []
+    chats: dict[str, str] = {}
+    for update in updates:
+        message = update.get("message") or update.get("edited_message") or {}
+        chat = message.get("chat") or {}
+        chat_id = chat.get("id")
+        if chat_id is None:
+            continue
+        label = (
+            chat.get("title")
+            or chat.get("username")
+            or " ".join(
+                part for part in (chat.get("first_name"), chat.get("last_name")) if part
+            )
+            or chat.get("type")
+            or ""
+        )
+        chats[str(chat_id)] = label
+    if not chats:
+        print("No chats found. Send /start (or any message) to the bot, then retry.")
+        return 0
+    for chat_id, label in chats.items():
+        print(f"{chat_id}\t{label}")
+    return 0
+
+
 def cmd_use_polling(args) -> int:
     config = _config()
     hook = _call(config.token, "getWebhookInfo")
@@ -82,6 +118,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     info = sub.add_parser("info", help="show bot identity and webhook status")
     info.set_defaults(func=cmd_info)
+    chats = sub.add_parser("chats", help="list chats that messaged the bot (find chat id)")
+    chats.set_defaults(func=cmd_chats)
     polling = sub.add_parser("use-polling", help="delete the webhook so this app can poll")
     polling.add_argument("--yes", action="store_true", help="confirm webhook removal")
     polling.set_defaults(func=cmd_use_polling)
