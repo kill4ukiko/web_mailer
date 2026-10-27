@@ -28,6 +28,10 @@ ACTION_MAP = {
               "next_send_at": None},
     "resume": {"status": "sending", "finished_at": None,
                "circuit_state": "ok", "next_send_at": None},
+    # ``restart`` is handled by ``app.core.campaign_ops.restart_campaign`` so
+    # the dashboard and Telegram share the exact same continuation semantics.
+    "restart": {"status": "sending", "finished_at": None,
+                "circuit_state": "ok", "next_send_at": None},
     "pause": {"status": "paused"},
     "cancel": {"status": "cancelled", "finished_at": "now()", "next_send_at": None},
     "schedule": {"status": "scheduled"},
@@ -96,13 +100,9 @@ def _dispatch(supabase: SupabaseWrapper, campaign_id: str):
     In ``cron`` send mode there is no Celery worker, so the campaign is left in
     ``sending`` and picked up by the next ``app.cron tick``.
     """
-    from app.config import get_settings
+    from app.core.campaign_ops import dispatch_campaign
 
-    if (get_settings().send_mode or "celery").lower() == "cron":
-        return
-    from app.workers.tasks_campaign import send_campaign
-
-    send_campaign.delay(campaign_id)
+    dispatch_campaign(campaign_id)
 
 
 def _other_high_priority(supabase: SupabaseWrapper, exclude_id: str) -> list[dict]:
@@ -277,10 +277,65 @@ def delete_campaign(campaign_id: str):
     return jsonify({"deleted": campaign_id}), 200
 
 
+def _sending_block(supabase):
+    """Common guard for anything that starts or resumes sending."""
+    from app.core.campaign_ops import sending_block_reason
+
+    reason = sending_block_reason(supabase)
+    if reason:
+        return jsonify({"error": reason}), 409
+    return None
+
+
+def _restart_response(supabase, campaign):
+    """Restart a paused campaign from the queue (shared with the Telegram bot)."""
+    from app.core.campaign_ops import restart_campaign
+
+    blocked = _sending_block(supabase)
+    if blocked:
+        return blocked
+
+    result = restart_campaign(supabase, campaign)
+    if not result.get("ok"):
+        return jsonify({
+            "id": campaign["id"],
+            "action": "restart",
+            "status": result.get("status"),
+            "sending_completed": bool(result.get("sending_completed")),
+            "error": result.get("error"),
+            "report": result.get("report"),
+        }), 409
+
+    try:
+        from app.core.notifications import notify_campaign
+
+        report = result.get("report") or {}
+        notify_campaign(
+            supabase.get_campaign(campaign["id"]) or campaign,
+            "started",
+            extra=[
+                "Restarted from where it stopped",
+                f"Queued remaining: {report.get('queued', 0)}",
+                f"Already sent: {report.get('sent', 0)}",
+            ],
+        )
+    except Exception:  # noqa: BLE001 - alerts must never undo a restart
+        pass
+
+    return jsonify({
+        "id": campaign["id"],
+        "action": "restart",
+        "status": "sending",
+        "report": result.get("report"),
+        "skipped": result.get("skipped", 0),
+        "requeued": result.get("requeued", 0),
+    }), 200
+
+
 @bp.post("/<campaign_id>/action")
 @limiter.limit("60 per minute")
 def campaign_action(campaign_id: str):
-    """POST /api/campaigns/<id>/action  {action: start|pause|resume|cancel|schedule}"""
+    """POST /api/campaigns/<id>/action  {action: start|pause|resume|restart|cancel|schedule}"""
     try:
         payload = CampaignAction.model_validate(request.get_json(silent=True) or {})
     except ValidationError as exc:
@@ -293,6 +348,12 @@ def campaign_action(campaign_id: str):
 
     action = payload.action
 
+    # Restart (and resuming a circuit-paused campaign) must continue from the
+    # queue: already-sent contacts are never emailed twice and the bounce that
+    # caused the pause is excluded. Both the dashboard and Telegram use this.
+    if action == "restart" or (action == "resume" and campaign.get("status") == "paused"):
+        return _restart_response(supabase, campaign)
+
     # Guard: never start/schedule a campaign that has no recipients attached.
     if action in ("start", "schedule"):
         if supabase.count_recipients(campaign_id) == 0:
@@ -300,18 +361,10 @@ def campaign_action(campaign_id: str):
                 "error": "campaign has no recipients; attach contacts before starting",
             }), 409
 
-    # Guard: sending requires a publicly reachable base URL, otherwise the open
-    # pixel and unsubscribe links point at localhost (dead links, broken
-    # unsubscribe, and no opens/clicks recorded).
     if action in ("start", "resume", "schedule"):
-        from app.core.mailer_config import effective_base_url, is_public_url
-
-        if not is_public_url(effective_base_url(supabase)):
-            return jsonify({
-                "error": "Set a public base URL in Settings (e.g. https://track.yourdomain.com) "
-                         "before sending. Tracking and unsubscribe links must be reachable "
-                         "from the internet.",
-            }), 409
+        blocked = _sending_block(supabase)
+        if blocked:
+            return blocked
 
     if action == "schedule" and not campaign.get("schedule_at"):
         return jsonify({"error": "set a schedule_at time before scheduling"}), 409
@@ -324,11 +377,6 @@ def campaign_action(campaign_id: str):
     # Safety checks must run *before* the campaign is flipped to "sending";
     # otherwise a refused start leaves a campaign that looks live but never sends.
     if action in ("start", "resume"):
-        if effective_settings(supabase).get("sending_paused"):
-            return jsonify({
-                "error": "all sending is paused (kill switch). Re-enable sending in Settings first.",
-                "action": action,
-            }), 409
         # ``resume`` is the operator's explicit override, so it clears the
         # circuit (see ACTION_MAP); ``start`` must respect the current state.
         circuit = update.get("circuit_state", campaign.get("circuit_state", "ok"))
@@ -678,6 +726,8 @@ def clone_campaign(campaign_id: str):
         "window_timezone": campaign.get("window_timezone") or "UTC",
         "soft_bounce_policy": campaign.get("soft_bounce_policy") or "suppress",
         "soft_bounce_threshold": campaign.get("soft_bounce_threshold") or 2,
+        "hard_bounce_policy": campaign.get("hard_bounce_policy") or "suppress",
+        "hard_bounce_threshold": campaign.get("hard_bounce_threshold") or 2,
         "status": "draft",
         "reuse_root_id": root,
         "created_at": "now()",
@@ -743,6 +793,7 @@ def resend_campaign(campaign_id: str):
         "finished_at": None,
         "circuit_state": "ok",
         "stats": {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0, "unsubscribes": 0},
+        "stats_baseline": {},
     })
 
     refreshed = supabase.get_campaign(campaign_id) or campaign

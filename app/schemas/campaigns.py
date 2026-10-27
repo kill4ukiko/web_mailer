@@ -32,6 +32,10 @@ class CampaignCreate(BaseModel):
     # (suppress after N soft bounces) or 'never' (keep the contact active).
     soft_bounce_policy: Literal["suppress", "threshold", "never"] | None = None
     soft_bounce_threshold: int | None = Field(default=None, ge=1, le=10)
+    # Hard-bounce handling mirrors the soft-bounce options; a hard bounce is
+    # permanent though, so 'never' is only for auditing/list hygiene.
+    hard_bounce_policy: Literal["suppress", "threshold", "never"] | None = None
+    hard_bounce_threshold: int | None = Field(default=None, ge=1, le=10)
 
 
 class CampaignUpdate(BaseModel):
@@ -55,10 +59,12 @@ class CampaignUpdate(BaseModel):
     priority: Literal["normal", "high"] | None = None
     soft_bounce_policy: Literal["suppress", "threshold", "never"] | None = None
     soft_bounce_threshold: int | None = Field(default=None, ge=1, le=10)
+    hard_bounce_policy: Literal["suppress", "threshold", "never"] | None = None
+    hard_bounce_threshold: int | None = Field(default=None, ge=1, le=10)
 
 
 class CampaignAction(BaseModel):
-    action: Literal["start", "pause", "resume", "cancel", "schedule"]
+    action: Literal["start", "pause", "resume", "restart", "cancel", "schedule"]
 
 
 class CampaignPriority(BaseModel):

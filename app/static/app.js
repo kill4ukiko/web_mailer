@@ -665,7 +665,19 @@ const INFO = {
       "<li><strong>Suppress after N</strong> — tolerate a few transient failures before " +
       "suppressing; set N with the threshold field.</li>" +
       "<li><strong>Never suppress</strong> — always keep the address active (use with care).</li></ul>" +
-      "<p>Hard bounces, spam complaints and unsubscribes are always suppressed.</p>",
+      "<p>Spam complaints and unsubscribes are always suppressed.</p>",
+  },
+  hard_bounce: {
+    title: "Hard-bounce handling",
+    body: "<p>A <strong>hard bounce</strong> is permanent (unknown mailbox or domain). " +
+      "Choose how this campaign treats the contact:</p>" +
+      "<ul><li><strong>Suppress immediately</strong> — fastest reputation protection (default).</li>" +
+      "<li><strong>Suppress after N</strong> — count hard bounces on the contact and suppress " +
+      "when the tally reaches N; set N with the threshold field.</li>" +
+      "<li><strong>Never suppress</strong> — keep the address active (auditing only; risky).</li></ul>" +
+      "<p>When a campaign is paused by the circuit breaker, use <strong>Restart sending</strong> " +
+      "to continue with the remaining queue: contacts already emailed (including the bounced " +
+      "one) are never re-sent.</p>",
   },
   lists: {
     title: "Contact lists",
@@ -885,6 +897,10 @@ function initCampaignEditor() {
     if (sbp) payload.soft_bounce_policy = sbp;
     const sbt = numField("soft_bounce_threshold");
     if (sbt !== null) payload.soft_bounce_threshold = sbt;
+    const hbp = opt("hard_bounce_policy");
+    if (hbp) payload.hard_bounce_policy = hbp;
+    const hbt = numField("hard_bounce_threshold");
+    if (hbt !== null) payload.hard_bounce_threshold = hbt;
 
     const button = form.querySelector("button[type=submit]");
     button.disabled = true;
@@ -973,6 +989,9 @@ function initSettingsForm() {
     const sbp = (fd.get("soft_bounce_policy") || "").trim();
     if (sbp) payload.soft_bounce_policy = sbp;
     payload.soft_bounce_threshold = num("soft_bounce_threshold");
+    const hbp = (fd.get("hard_bounce_policy") || "").trim();
+    if (hbp) payload.hard_bounce_policy = hbp;
+    payload.hard_bounce_threshold = num("hard_bounce_threshold");
     Object.keys(payload).forEach((k) => payload[k] == null && delete payload[k]);
 
     const button = form.querySelector("button[type=submit]");
@@ -1871,6 +1890,11 @@ function initCampaignActions() {
         message = "Start sending to " + count + " recipient(s)?\n\n" +
           "Scheduling is global: overlapping campaigns are spaced automatically and a " +
           "high-priority campaign pauses the others. Continue?";
+      }
+      if (action === "restart") {
+        message = "Restart this campaign from where it stopped?\n\n" +
+          "Only queued recipients will be emailed. Contacts that already received this " +
+          "campaign — including the address that hard-bounced — are not emailed again.";
       }
       if (!window.confirm(message)) return;
 

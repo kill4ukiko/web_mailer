@@ -83,6 +83,20 @@
         <input type="number" name="soft_bounce_threshold" min="1" max="10"
                value="{{ campaign.soft_bounce_threshold or 2 }}">
       </label>
+      <label>
+        Hard bounces {{ info('hard_bounce') }}
+        {% set hbp = campaign.hard_bounce_policy or 'suppress' %}
+        <select name="hard_bounce_policy">
+          <option value="suppress" {% if hbp == 'suppress' %}selected{% endif %}>Suppress immediately (default)</option>
+          <option value="threshold" {% if hbp == 'threshold' %}selected{% endif %}>Suppress after N hard bounces</option>
+          <option value="never" {% if hbp == 'never' %}selected{% endif %}>Never suppress (keep active)</option>
+        </select>
+      </label>
+      <label>
+        Hard-bounce threshold {{ info('hard_bounce') }}
+        <input type="number" name="hard_bounce_threshold" min="1" max="10"
+               value="{{ campaign.hard_bounce_threshold or 2 }}">
+      </label>
     </div>
     <small class="muted">If start &gt; close the window spans midnight (e.g. 22:00 &rarr; 06:00).</small>
   </fieldset>

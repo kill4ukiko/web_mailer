@@ -91,6 +91,11 @@ def _default_beat_schedule() -> dict:
             "schedule": 900.0,  # every 15 minutes
             "options": {"queue": "celery"},
         },
+        "poll-telegram-commands": {
+            "task": "app.workers.tasks_campaign.poll_telegram_commands",
+            "schedule": 20.0,  # /report and /restart replies within ~20s
+            "options": {"queue": "monitor"},
+        },
         "reconcile-stuck-campaigns": {
             "task": "app.workers.tasks_monitor.reconcile_stuck_campaigns",
             "schedule": 300.0,  # every 5 minutes

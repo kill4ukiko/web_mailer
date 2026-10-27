@@ -296,6 +296,8 @@ class FakeSupabase:
             "last_event_at": None,
             "soft_bounce_count": 0,
             "last_soft_bounce_at": None,
+            "hard_bounce_count": 0,
+            "last_hard_bounce_at": None,
             "created_at": "2026-01-01T00:00:00Z",
         }
         self.contacts.append(row)
@@ -358,6 +360,18 @@ class FakeSupabase:
                 c["last_soft_bounce_at"] = "2026-01-01T00:00:00Z"
                 if threshold > 0 and c["soft_bounce_count"] >= threshold:
                     c["status"] = "bounced_soft"
+                    c["safe_to_send"] = False
+                    return True
+                return False
+        return False
+
+    def register_hard_bounce(self, email, threshold):
+        for c in self.contacts:
+            if c["email"] == email.lower().strip():
+                c["hard_bounce_count"] = int(c.get("hard_bounce_count") or 0) + 1
+                c["last_hard_bounce_at"] = "2026-01-01T00:00:00Z"
+                if threshold > 0 and c["hard_bounce_count"] >= threshold:
+                    c["status"] = "bounced_hard"
                     c["safe_to_send"] = False
                     return True
                 return False
@@ -693,6 +707,9 @@ class FakeSupabase:
             "circuit_state": "ok",
             "status": data.get("status", "draft"),
             "priority": data.get("priority", "normal"),
+            "hard_bounce_policy": data.get("hard_bounce_policy", "suppress"),
+            "hard_bounce_threshold": data.get("hard_bounce_threshold", 2),
+            "stats_baseline": data.get("stats_baseline", {}),
             "stats": {"sent": 0, "delivered": 0, "opens": 0, "clicks": 0, "bounces": 0, "complaints": 0, "unsubscribes": 0},
             "created_at": "2026-01-01T00:00:00Z",
             "started_at": None,
@@ -706,6 +723,17 @@ class FakeSupabase:
 
     def get_campaign(self, campaign_id):
         return next((c for c in self.campaigns if c["id"] == campaign_id), None)
+
+    def find_campaigns_by_name(self, name):
+        query = (name or "").strip().lower()
+        if not query:
+            return []
+        rows = [
+            c for c in self.campaigns
+            if query in str(c.get("name") or "").lower()
+        ]
+        exact = [c for c in rows if str(c.get("name") or "").lower() == query]
+        return exact or rows
 
     def update_campaign(self, campaign_id, data):
         campaign = self.get_campaign(campaign_id)

@@ -233,6 +233,7 @@ def _run_tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
     _maybe_progress_alert()
     _maybe_sms_progress_alert()
     _maybe_bird_progress_alert()
+    _poll_telegram_commands()
 
     return {
         "dispatched": dispatched, "failed": failed, "cycles": cycles,
@@ -244,6 +245,16 @@ def _run_tick(budget_seconds: float = DEFAULT_TICK_BUDGET_SECONDS) -> dict:
         "bird_cycles": bird_cycles, "bird_completed": bird_completed,
         "bird_resumed_held": bird_resumed_held,
     }
+
+
+def _poll_telegram_commands() -> None:
+    """Handle /report and /restart from the operator chat (cron deployments)."""
+    try:
+        from app.core.telegram_commands import poll_once
+
+        poll_once()
+    except Exception:  # noqa: BLE001 - the bot must never break a send tick
+        pass
 
 
 def _maybe_progress_alert(min_interval: float = PROGRESS_ALERT_INTERVAL) -> None:

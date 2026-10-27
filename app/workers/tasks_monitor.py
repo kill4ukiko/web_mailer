@@ -42,7 +42,10 @@ def evaluate_circuit() -> dict:
             continue
         checked += 1
         reasons = breach_reasons(
-            campaign.get("stats") or {}, max_bounce, max_complaint
+            campaign.get("stats") or {},
+            max_bounce,
+            max_complaint,
+            baseline=campaign.get("stats_baseline") or {},
         )
         if not reasons:
             continue
@@ -53,7 +56,10 @@ def evaluate_circuit() -> dict:
         CIRCUIT_POST_COMPLETION_HOURS
     ):
         reasons = breach_reasons(
-            campaign.get("stats") or {}, max_bounce, max_complaint
+            campaign.get("stats") or {},
+            max_bounce,
+            max_complaint,
+            baseline=campaign.get("stats_baseline") or {},
         )
         checked += 1
         if reasons:

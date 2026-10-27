@@ -179,7 +179,9 @@ def brevo_webhook():
 
             # Hard failures trigger global suppression per deliverability rules.
             suppressed = False
-            if event.event in ("hard_bounce", "complaint", "unsubscribe"):
+            if event.event == "hard_bounce":
+                suppressed = _apply_hard_bounce_policy(supabase, event)
+            elif event.event in ("complaint", "unsubscribe"):
                 supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP[event.event])
                 suppressed = True
             elif event.event == "soft_bounce":
@@ -224,6 +226,28 @@ def _apply_soft_bounce_policy(supabase, event: BrevoEvent) -> bool:
     if policy == "threshold":
         return supabase.register_soft_bounce(event.email, threshold)
     supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP["soft_bounce"])
+    return True
+
+
+def _hard_bounce_policy(supabase, event: BrevoEvent) -> tuple[str, int]:
+    """Resolve the campaign's hard-bounce policy (default: suppress now)."""
+    policy, threshold = "suppress", 2
+    if event.campaign_id:
+        campaign = supabase.get_campaign(event.campaign_id)
+        if campaign:
+            policy = campaign.get("hard_bounce_policy") or "suppress"
+            threshold = int(campaign.get("hard_bounce_threshold") or 2)
+    return policy, threshold
+
+
+def _apply_hard_bounce_policy(supabase, event: BrevoEvent) -> bool:
+    """Handle a hard bounce per policy; return True when it suppressed the contact."""
+    policy, threshold = _hard_bounce_policy(supabase, event)
+    if policy == "never":
+        return False
+    if policy == "threshold":
+        return supabase.register_hard_bounce(event.email, threshold)
+    supabase.suppress_contact(event.email, SUPPRESS_REASON_MAP["hard_bounce"])
     return True
 
 

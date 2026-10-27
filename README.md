@@ -13,7 +13,9 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
   campaigns, plus **one high-priority campaign** that pauses the others (they
   resume automatically).
 - Atomic recipient claiming using PostgreSQL row-level locks (`FOR UPDATE SKIP LOCKED`).
-- Circuit breakers that auto-pause campaigns on high bounce/complaint rates.
+- Circuit breakers that auto-pause campaigns on high bounce/complaint rates,
+  with per-campaign hard/soft bounce policies (suppress, threshold or never) and
+  a **restart from where it stopped** action for paused campaigns.
 - Scheduled campaigns, per-campaign **delivery windows** and staggered delivery.
 - **Plan-aware settings guard**: pick your Brevo plan and get soft warnings (or
   hard blocks) before a misconfiguration can hurt your reputation.
@@ -291,7 +293,11 @@ hold across every campaign and worker process:
   `POST /api/settings/test-email` send a real message so you can inspect inbox
   placement and headers before a live run.
 - **Telegram alerts** — campaign started/completed/paused and circuit-breaker
-  trips are pushed to the configured chat.
+  trips are pushed to the configured chat. The same chat accepts operator
+  commands: `/report <campaign>` returns delivery stats and status, and
+  `/restart <campaign>` continues a paused campaign from where it stopped
+  (already-sent contacts are never re-emailed). A built-in poller runs every
+  ~20 seconds; `app.cron tick` polls as well when Celery Beat is not running.
 
 ## Authentication
 

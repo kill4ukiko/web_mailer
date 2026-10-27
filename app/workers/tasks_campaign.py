@@ -51,6 +51,7 @@ def _health_breaches(campaign: dict, settings: dict) -> list[str]:
         campaign.get("stats") or {},
         float(settings.get("max_hard_bounce_rate") or 0.02),
         float(settings.get("max_complaint_rate") or 0.001),
+        baseline=campaign.get("stats_baseline") or {},
     )
 
 
@@ -489,7 +490,25 @@ def _complete_campaign(supabase, campaign_id: str) -> bool:
     return True
 
 
+@celery.task(name="app.workers.tasks_campaign.poll_telegram_commands")
+def poll_telegram_commands() -> dict:
+    """Poll the operator Telegram chat for /report and /restart commands.
+
+    Driven by Celery Beat; the cron driver calls the same poller each tick so
+    Redis-less deployments get the bot too.
+    """
+    from app.core.telegram_commands import poll_once
+
+    try:
+        return poll_once()
+    except Exception as exc:  # noqa: BLE001 - a bad update must not kill beat
+        logger.warning("telegram command poll failed: %s", exc)
+        return {"error": str(exc)}
+
+
 @celery.task(name="app.workers.tasks_campaign.campaign_progress_alerts")
+
+
 def campaign_progress_alerts() -> dict:
     """Periodically report engagement (sent/opens/clicks) per campaign.
 

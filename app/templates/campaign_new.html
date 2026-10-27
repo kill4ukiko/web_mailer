@@ -201,6 +201,23 @@
                placeholder="2">
         <small class="muted">Only used by the “suppress after N” policy.</small>
       </label>
+      <label>
+        Hard bounces {{ info('hard_bounce') }}
+        <select name="hard_bounce_policy">
+          {% set hbp = campaign.hard_bounce_policy if campaign and campaign.hard_bounce_policy else 'suppress' %}
+          <option value="suppress" {% if hbp == 'suppress' %}selected{% endif %}>Suppress immediately (default)</option>
+          <option value="threshold" {% if hbp == 'threshold' %}selected{% endif %}>Suppress after N hard bounces</option>
+          <option value="never" {% if hbp == 'never' %}selected{% endif %}>Never suppress (keep active)</option>
+        </select>
+        <small class="muted">A hard bounce is permanent (unknown mailbox or domain).</small>
+      </label>
+      <label>
+        Hard-bounce threshold {{ info('hard_bounce') }}
+        <input type="number" name="hard_bounce_threshold" min="1" max="10"
+               value="{{ campaign.hard_bounce_threshold if campaign and campaign.hard_bounce_threshold else '' }}"
+               placeholder="2">
+        <small class="muted">Only used by the “suppress after N” policy.</small>
+      </label>
     </div>
   </fieldset>
 

@@ -223,6 +223,36 @@ class SupabaseWrapper:
         self.client.table("contacts").update(update).eq("email", email).execute()
         return suppressed
 
+    def register_hard_bounce(self, email: str, threshold: int) -> bool:
+        """Bump a contact's hard-bounce tally; suppress at/above ``threshold``.
+
+        Returns True when the contact was suppressed by this event. Used by the
+        per-campaign ``threshold`` hard-bounce policy. The contact is always
+        suppressed once the threshold is reached (hard bounces are permanent).
+        """
+        email = email.lower().strip()
+        rows = (
+            self.client.table("contacts")
+            .select("id,hard_bounce_count")
+            .eq("email", email)
+            .execute()
+            .data
+            or []
+        )
+        if not rows:
+            return False
+        count = int(rows[0].get("hard_bounce_count") or 0) + 1
+        suppressed = threshold > 0 and count >= threshold
+        update: dict[str, Any] = {
+            "hard_bounce_count": count,
+            "last_hard_bounce_at": "now()",
+        }
+        if suppressed:
+            update["status"] = "bounced_hard"
+            update["safe_to_send"] = False
+        self.client.table("contacts").update(update).eq("email", email).execute()
+        return suppressed
+
     def delete_contacts(self, contact_ids: Iterable[str]) -> int:
         """Delete several contacts by id; return how many rows were removed.
 
@@ -353,6 +383,27 @@ class SupabaseWrapper:
     def get_campaign(self, campaign_id: str) -> dict[str, Any] | None:
         data = self.client.table("campaigns").select("*").eq("id", campaign_id).execute().data
         return data[0] if data else None
+
+    def find_campaigns_by_name(self, name: str) -> list[dict[str, Any]]:
+        """Find campaigns whose name matches ``name`` (case-insensitive).
+
+        An exact match wins; otherwise a contains match is returned so Telegram
+        commands can work with a short name. Results are newest first.
+        """
+        query = (name or "").strip()
+        if not query:
+            return []
+        rows = (
+            self.client.table("campaigns")
+            .select("id,name,status,circuit_state")
+            .ilike("name", f"%{query}%")
+            .limit(10)
+            .execute()
+            .data
+            or []
+        )
+        exact = [r for r in rows if str(r.get("name") or "").lower() == query.lower()]
+        return exact or rows
 
     def update_campaign(self, campaign_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
         row = self.client.table("campaigns").update(data).eq("id", campaign_id).execute().data

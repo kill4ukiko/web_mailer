@@ -6,6 +6,7 @@ per-field: a non-empty DB value wins, otherwise the environment value is used.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from dataclasses import dataclass
@@ -164,6 +165,37 @@ class TelegramClient:
             logger.warning("telegram API error [%s]: %s", resp.status_code, resp.text[:300])
             return False
         return True
+
+    def get_updates(self, offset: int | None = None, timeout: int = 0) -> list[dict]:
+        """Fetch pending bot updates (long polling when ``timeout`` > 0).
+
+        Returns an empty list when Telegram is unreachable or unconfigured;
+        callers treat this as "nothing to do" rather than an error.
+        """
+        if not self.configured:
+            return []
+        url = f"https://api.telegram.org/bot{self.config.token}/getUpdates"
+        params: dict = {
+            "timeout": max(0, int(timeout)),
+            "allowed_updates": json.dumps(["message", "edited_message"]),
+        }
+        if offset is not None:
+            params["offset"] = int(offset)
+        try:
+            resp = requests.get(url, params=params, timeout=max(10, int(timeout) + 10))
+        except requests.RequestException as exc:
+            logger.warning("telegram getUpdates failed: %s", exc)
+            return []
+        if not resp.ok:
+            logger.warning("telegram getUpdates error [%s]: %s", resp.status_code, resp.text[:300])
+            return []
+        try:
+            payload = resp.json() or {}
+        except ValueError:
+            logger.warning("telegram getUpdates returned invalid JSON")
+            return []
+        result = payload.get("result")
+        return result if isinstance(result, list) else []
 
 
 _singleton: TelegramClient | None = None

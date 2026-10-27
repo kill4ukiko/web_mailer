@@ -38,6 +38,7 @@ ORDER = [
     "19_atomic_stats.sql",
     "20_safety_fixes.sql",
     "21_site_accounts.sql",
+    "22_hard_bounce_policy.sql",
 ]
 
 _TRACKING_TABLE_SQL = """

@@ -36,7 +36,7 @@
       <button class="btn" data-action="pause" data-campaign="{{ campaign.id }}">Pause</button>
     {% endif %}
     {% if campaign.status == 'paused' %}
-      <button class="btn btn-primary" data-action="resume" data-campaign="{{ campaign.id }}">Resume</button>
+      <button class="btn btn-primary" data-action="restart" data-campaign="{{ campaign.id }}">Restart sending</button>
       <button class="btn btn-danger" data-action="cancel" data-campaign="{{ campaign.id }}">Cancel</button>
     {% endif %}
     {% if campaign.status not in ('completed', 'cancelled') %}

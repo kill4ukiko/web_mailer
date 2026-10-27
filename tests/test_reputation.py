@@ -139,6 +139,79 @@ def test_soft_bounce_threshold_policy_suppresses_at_limit(supabase):
 
 
 # --------------------------------------------------------------------------- #
+# Hard-bounce policy (per campaign)
+# --------------------------------------------------------------------------- #
+def _hard_event(email="a@x.co", campaign_id=None):
+    from app.schemas.webhooks import BrevoEvent
+
+    return BrevoEvent(event="hard_bounce", email=email, campaign_id=campaign_id)
+
+
+def _policy_campaign(supabase, **overrides):
+    campaign = supabase.create_campaign({
+        "name": "c", "subject": "s", "from_email": "n@x.co",
+        "from_name": "n", "html_content": "<p>x</p>",
+    })
+    campaign.update(overrides)
+    return campaign
+
+
+def test_hard_bounce_suppress_policy_is_default(supabase):
+    from app.api.webhooks import _apply_hard_bounce_policy
+
+    supabase.create_contact({"email": "a@x.co"})
+    campaign = _policy_campaign(supabase)
+    suppressed = _apply_hard_bounce_policy(supabase, _hard_event(campaign_id=campaign["id"]))
+    assert suppressed is True
+    row = supabase._contact_by_email("a@x.co")
+    assert row["status"] == "bounced_hard"
+    assert row["safe_to_send"] is False
+
+
+def test_hard_bounce_never_policy_keeps_contact(supabase):
+    from app.api.webhooks import _apply_hard_bounce_policy
+
+    supabase.create_contact({"email": "a@x.co"})
+    campaign = _policy_campaign(supabase, hard_bounce_policy="never")
+    suppressed = _apply_hard_bounce_policy(supabase, _hard_event(campaign_id=campaign["id"]))
+    assert suppressed is False
+    row = supabase._contact_by_email("a@x.co")
+    assert row["status"] == "active"
+    assert row["safe_to_send"] is True
+
+
+def test_hard_bounce_threshold_policy_suppresses_at_limit(supabase):
+    from app.api.webhooks import _apply_hard_bounce_policy
+
+    supabase.create_contact({"email": "a@x.co"})
+    campaign = _policy_campaign(
+        supabase, hard_bounce_policy="threshold", hard_bounce_threshold=2,
+    )
+
+    first = _apply_hard_bounce_policy(supabase, _hard_event(campaign_id=campaign["id"]))
+    assert first is False
+    row = supabase._contact_by_email("a@x.co")
+    assert row["status"] == "active"
+    assert row["hard_bounce_count"] == 1
+
+    second = _apply_hard_bounce_policy(supabase, _hard_event(campaign_id=campaign["id"]))
+    assert second is True
+    row = supabase._contact_by_email("a@x.co")
+    assert row["status"] == "bounced_hard"
+    assert row["safe_to_send"] is False
+    assert row["hard_bounce_count"] == 2
+
+
+def test_hard_bounce_policy_uses_campaign_defaults_when_unset(supabase):
+    from app.api.webhooks import _apply_hard_bounce_policy
+
+    supabase.create_contact({"email": "a@x.co"})
+    # No campaign id (e.g. a transactional message): always suppress.
+    assert _apply_hard_bounce_policy(supabase, _hard_event()) is True
+    assert supabase._contact_by_email("a@x.co")["status"] == "bounced_hard"
+
+
+# --------------------------------------------------------------------------- #
 # Campaign reports
 # --------------------------------------------------------------------------- #
 def _campaign_with_recipients(supabase):
