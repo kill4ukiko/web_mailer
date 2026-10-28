@@ -9,6 +9,7 @@ chat are acknowledged (offset advanced) but ignored.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import tempfile
@@ -17,7 +18,6 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_STATE_NAME = "webmailer-telegram.state"
 _OFFSET_REDIS_KEY = "telegram:update_offset"
 
 USAGE = (
@@ -30,37 +30,53 @@ USAGE = (
 # --------------------------------------------------------------------------- #
 # Offset persistence (Redis when available, state file for cron-only hosts)
 # --------------------------------------------------------------------------- #
-def _state_path() -> Path:
+def _fingerprint(token: str) -> str:
+    """A short, non-reversible id for the bot token.
+
+    Update ids are only meaningful to the bot that issued them. Keying the
+    stored offset by token means swapping ``TELEGRAM_BOT_TOKEN`` starts from a
+    clean slate instead of silently ignoring every update (a stale offset from
+    the previous bot can be larger than the new bot's update ids).
+    """
+    value = (token or "unconfigured").encode("utf-8")
+    return hashlib.sha256(value).hexdigest()[:16]
+
+
+def _redis_key(token: str) -> str:
+    return f"{_OFFSET_REDIS_KEY}:{_fingerprint(token)}"
+
+
+def _state_path(token: str = "") -> Path:
     base = os.environ.get("CRON_STATE_DIR") or tempfile.gettempdir()
-    return Path(base) / _STATE_NAME
+    return Path(base) / f"webmailer-telegram-{_fingerprint(token)}.state"
 
 
-def _read_offset() -> int | None:
+def _read_offset(token: str = "") -> int | None:
     try:
         from app.extensions import _RedisHolder
 
-        value = _RedisHolder.get().get(_OFFSET_REDIS_KEY)
+        value = _RedisHolder.get().get(_redis_key(token))
         if value is not None:
             return int(value)
         return None
     except Exception:  # noqa: BLE001 - fall back to the file
         pass
     try:
-        return int(_state_path().read_text().strip())
+        return int(_state_path(token).read_text().strip())
     except Exception:  # noqa: BLE001
         return None
 
 
-def _write_offset(offset: int) -> None:
+def _write_offset(token: str, offset: int) -> None:
     try:
         from app.extensions import _RedisHolder
 
-        _RedisHolder.get().set(_OFFSET_REDIS_KEY, str(int(offset)))
+        _RedisHolder.get().set(_redis_key(token), str(int(offset)))
         return
     except Exception:  # noqa: BLE001 - fall back to the file
         pass
     try:
-        _state_path().write_text(str(int(offset)))
+        _state_path(token).write_text(str(int(offset)))
     except Exception:  # noqa: BLE001
         logger.warning("could not persist telegram update offset", exc_info=True)
 
@@ -257,7 +273,7 @@ def poll_once(limit: int = 20) -> dict:
         return {"skipped": "telegram not configured"}
 
     client = TelegramClient(config=config)
-    offset = _read_offset()
+    offset = _read_offset(config.token)
     try:
         updates = client.get_updates(offset=offset, timeout=0)[:limit]
     except Exception as exc:  # noqa: BLE001 - never break the beat tick
@@ -293,19 +309,19 @@ def poll_once(limit: int = 20) -> dict:
         processed += 1
 
     if next_offset is not None and (offset is None or next_offset > offset):
-        _write_offset(next_offset)
+        _write_offset(config.token, next_offset)
     return {"processed": processed, "replied": replied}
 
 
-def clear_offset() -> None:
-    """Forget the stored update offset (tests / operator reset)."""
+def clear_offset(token: str = "") -> None:
+    """Forget the stored update offset for one bot token (tests / operator reset)."""
     try:
         from app.extensions import _RedisHolder
 
-        _RedisHolder.get().delete(_OFFSET_REDIS_KEY)
+        _RedisHolder.get().delete(_redis_key(token))
     except Exception:  # noqa: BLE001
         pass
     try:
-        _state_path().unlink()
+        _state_path(token).unlink()
     except Exception:  # noqa: BLE001
         pass

@@ -40,6 +40,21 @@ if not exist "%WAITRESS%" (
   exit /b 1
 )
 
+rem ---- 0. Stop a previous run so .env changes take effect -----------------
+rem  Restarting the stack is what makes a changed Telegram bot token/chat id
+rem  (or any other .env edit) apply everywhere: web, worker and beat.
+powershell -NoProfile -Command ^
+  "$p=Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and ($_.CommandLine -match 'waitress-serve|celery_app|celery\.exe|tunnel_watch|cloudflared') }; if($p){ Write-Host 'Stopping previous webmailer stack (web/worker/beat/tunnel)...'; $p | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; exit 0 } else { exit 1 }"
+if not errorlevel 1 (
+  timeout /t 2 >nul
+)
+
+rem ---- Telegram preflight -------------------------------------------------
+rem  Shows which bot is active and whether a webhook blocks command polling.
+echo Checking Telegram bot...
+"%PY%\python.exe" -m scripts.telegram_bot info
+if errorlevel 1 echo WARNING: Telegram is not configured or unreachable; /report and /restart are disabled.
+
 rem ---- 1. Redis -------------------------------------------------------
 if not defined REDIS_EXE (
   echo WARNING: redis-server.exe not found under .tools\redis.

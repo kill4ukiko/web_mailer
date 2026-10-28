@@ -153,6 +153,13 @@ platform. Built with **Python/Flask**, **Celery**, **Supabase (PostgreSQL)**,
    window. Then open <http://127.0.0.1:5000>. Run `stop-local.bat` to stop
    everything at once.
 
+   Re-running `run-local.bat` stops the previous web/worker/beat/tunnel
+   processes first, so edits to `.env` (including `TELEGRAM_BOT_TOKEN` /
+   `TELEGRAM_CHAT_ID`) apply everywhere. It also prints the active Telegram
+   bot and warns if a webhook blocks command polling. Telegram update offsets
+   are stored per bot token, so switching to a different bot starts cleanly
+   instead of inheriting the previous bot's offset.
+
    To run the pieces individually instead (Windows uses waitress — note
    `--call`; the worker needs `--pool=solo`):
 

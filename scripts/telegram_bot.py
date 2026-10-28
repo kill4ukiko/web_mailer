@@ -56,6 +56,7 @@ def cmd_info(_args) -> int:
     me = _call(config.token, "getMe")
     hook = _call(config.token, "getWebhookInfo")
     print(f"bot: @{me.get('username')} ({me.get('first_name')})")
+    print(f"token source: {config.token_source}")
     print(f"chat: {config.chat_id} (source: {config.chat_source})")
     if hook.get("url"):
         print(f"webhook: {hook['url']} (pending updates: {hook.get('pending_update_count', 0)})")
@@ -124,7 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     polling.add_argument("--yes", action="store_true", help="confirm webhook removal")
     polling.set_defaults(func=cmd_use_polling)
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except RuntimeError as exc:
+        print(f"Telegram error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

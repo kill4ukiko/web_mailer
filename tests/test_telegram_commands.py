@@ -233,6 +233,26 @@ def test_bot_chats_lists_pending_chat_ids(monkeypatch, capsys):
     assert "Ada" in out
 
 
+def test_offset_state_is_scoped_to_bot_token(tmp_path, monkeypatch):
+    from app.core import telegram_commands
+
+    monkeypatch.setenv("CRON_STATE_DIR", str(tmp_path))
+    first = telegram_commands._state_path("token-a")
+    second = telegram_commands._state_path("token-b")
+    assert first != second
+
+    first.write_text("11")
+    assert telegram_commands._read_offset("token-a") == 11
+    # A different bot must not inherit the previous bot's update id.
+    assert telegram_commands._read_offset("token-b") is None
+
+    telegram_commands.clear_offset("token-a")
+    assert not first.exists()
+    second.write_text("22")
+    telegram_commands.clear_offset("token-a")
+    assert second.exists()
+
+
 def test_poll_once_replies_only_in_the_configured_chat(supabase, monkeypatch):
     from app.core import telegram as telegram_module
     from app.core import telegram_commands
@@ -263,8 +283,10 @@ def test_poll_once_replies_only_in_the_configured_chat(supabase, monkeypatch):
         lambda *a, **k: telegram_module.TelegramConfig(token="t", chat_id="42"),
     )
     monkeypatch.setattr(telegram_module, "TelegramClient", FakeClient)
-    monkeypatch.setattr(telegram_commands, "_read_offset", lambda: 10)
-    monkeypatch.setattr(telegram_commands, "_write_offset", offsets.append)
+    monkeypatch.setattr(telegram_commands, "_read_offset", lambda token: 10)
+    monkeypatch.setattr(
+        telegram_commands, "_write_offset", lambda token, offset: offsets.append(offset)
+    )
 
     result = telegram_commands.poll_once()
 
