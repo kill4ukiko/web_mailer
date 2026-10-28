@@ -138,10 +138,7 @@ def format_report(payload: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------- #
 def _resolve_campaign(supabase, name: str) -> tuple[dict | None, list[dict]]:
     rows = supabase.find_campaigns_by_name(name)
-    if not rows:
-        return None, []
-    exact = [r for r in rows if str(r.get("name") or "").lower() == name.lower()]
-    return (exact or rows)[0], rows
+    return (rows[0] if rows else None), rows
 
 
 def _ambiguous(name: str, rows: list[dict]) -> str:
@@ -171,7 +168,7 @@ def _report_command(name: str) -> str:
     campaign, rows = _resolve_campaign(supabase, name)
     if campaign is None:
         return _missing(name)
-    if len(rows) > 1 and campaign.get("name", "").lower() != name.lower():
+    if len(rows) > 1:
         return _ambiguous(name, rows)
     full = supabase.get_campaign(campaign["id"]) or campaign
     return format_report(report_payload(supabase, full))
@@ -190,7 +187,7 @@ def _restart_command(name: str) -> str:
     campaign, rows = _resolve_campaign(supabase, name)
     if campaign is None:
         return _missing(name)
-    if len(rows) > 1 and campaign.get("name", "").lower() != name.lower():
+    if len(rows) > 1:
         return _ambiguous(name, rows)
 
     full = supabase.get_campaign(campaign["id"]) or campaign

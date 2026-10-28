@@ -131,6 +131,16 @@ def test_restart_command_honours_kill_switch(supabase, monkeypatch):
     fake.delay.assert_not_called()
 
 
+def test_commands_reject_duplicate_exact_names(supabase):
+    from app.core.telegram_commands import handle_text
+
+    _campaign(supabase, name="Same")
+    _campaign(supabase, name="Same")
+
+    assert "More than one campaign matches" in handle_text("/report Same")
+    assert "More than one campaign matches" in handle_text("/restart Same")
+
+
 def test_restart_command_requires_exact_name_when_ambiguous(supabase, monkeypatch):
     from app.core.telegram_commands import handle_text
 
