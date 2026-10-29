@@ -1,6 +1,6 @@
 Thanks for meeting - here's what's next
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Thank you for your time today. Below is a summary of what we discussed and the actions we agreed.
 

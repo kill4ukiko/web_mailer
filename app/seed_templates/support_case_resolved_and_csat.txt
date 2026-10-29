@@ -1,6 +1,6 @@
 Your support case is resolved
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Case #[Case Number] - [Case Subject] - has been marked resolved. Here's a summary of what we did.
 

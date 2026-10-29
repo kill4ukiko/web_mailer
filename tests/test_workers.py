@@ -79,6 +79,37 @@ def test_send_campaign_sends_batch_and_completes(supabase, monkeypatch):
     assert f"/api/track/{campaign['id']}/{rid}/open" in content["html"]
 
 
+def test_subject_merge_handles_missing_names(supabase, monkeypatch):
+    from app.workers.tasks_campaign import send_campaign
+
+    campaign = _make_campaign_and_recipients(supabase, n_recipients=3)
+    supabase.update_campaign(campaign["id"], {"subject": "Hi {{greeting_name}}"})
+    supabase.contacts[0]["first_name"] = "Ada"
+    supabase.contacts[1]["first_name"] = None
+    supabase.contacts[1]["last_name"] = "Lovelace"
+    supabase.contacts[2]["first_name"] = None
+    supabase.contacts[2]["last_name"] = None
+
+    captured = {}
+
+    def fake_send_batch(self, recipients, **kwargs):
+        captured["recipients"] = recipients
+        captured["content_factory"] = kwargs["content_factory"]
+        return [
+            SendResult(recipient_id=r["recipient_id"], email=r["email"], ok=True, message_id="m")
+            for r in recipients
+        ]
+
+    monkeypatch.setattr("app.core.brevo.BrevoClient.send_batch", fake_send_batch)
+
+    assert send_campaign.run(campaign["id"])["sent"] == 3
+    subjects = [
+        captured["content_factory"](recipient)["subject"]
+        for recipient in captured["recipients"]
+    ]
+    assert subjects == ["Hi Ada", "Hi Lovelace", "Hi there"]
+
+
 def test_send_campaign_skips_paused_campaign(supabase):
     from app.workers.tasks_campaign import send_campaign
 

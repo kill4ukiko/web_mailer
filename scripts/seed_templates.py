@@ -127,7 +127,7 @@ SEED_TEMPLATES: tuple[tuple[str, str, str], ...] = (
     (
         "customer_onboarding_welcome",
         "Customer Onboarding Welcome",
-        "Welcome aboard, {{first_name}} - your next steps",
+        "Welcome aboard, {{greeting_name}} - your next steps",
     ),
     (
         "support_case_resolved_and_csat",
@@ -158,7 +158,7 @@ SEED_TEMPLATES: tuple[tuple[str, str, str], ...] = (
     (
         "new_hire_welcome",
         "New Hire Welcome",
-        "Welcome to [Company Name], {{first_name}}",
+        "Welcome to [Company Name], {{greeting_name}}",
     ),
     (
         "company_announcement",

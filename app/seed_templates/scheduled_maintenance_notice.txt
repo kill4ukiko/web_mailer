@@ -1,6 +1,6 @@
 Planned maintenance on [Date]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 We're performing scheduled maintenance on [Service] to improve reliability and performance. During this window, [Affected Feature] may be unavailable.
 

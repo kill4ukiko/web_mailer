@@ -1,6 +1,6 @@
 Your call is confirmed
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 This confirms your scheduled call with [Contact Name] on [Date].
 

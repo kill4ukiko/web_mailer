@@ -1,6 +1,6 @@
 You're invited to interview for [Role]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Thank you for your interest in [Role] at [Company Name]. We'd like to invite you to a video interview with [Interviewer Name].
 

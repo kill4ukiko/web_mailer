@@ -1,6 +1,6 @@
 How is [Product/Service] working for you?
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 It's been [Timeframe] since you started with [Product/Service], and I wanted to check in. Is everything working as expected?
 

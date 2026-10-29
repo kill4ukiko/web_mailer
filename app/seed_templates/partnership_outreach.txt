@@ -1,6 +1,6 @@
 A partnership idea for [Company Name]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 I've been following [Company Name]'s work in [Industry] and see a natural fit with what we do at [Your Company]. I'd like to explore whether a partnership makes sense.
 

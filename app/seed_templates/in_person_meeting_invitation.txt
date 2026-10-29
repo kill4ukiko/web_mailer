@@ -1,6 +1,6 @@
 Meet us at [Location]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 I'd like to invite you to an in-person meeting at [Location] to discuss [Topic].
 

@@ -1,6 +1,6 @@
 Your Q[Quarter] business review
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 It's time for our quarterly review. We'll look at results so far, what's working, and where we can improve next quarter.
 

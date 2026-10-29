@@ -1,6 +1,6 @@
 See [Product] in action
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 A 20-minute walkthrough of [Product], tailored to [Company Name]'s [Goal]. No slides - just the product and your questions.
 

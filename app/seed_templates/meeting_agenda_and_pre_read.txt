@@ -1,6 +1,6 @@
 Agenda and pre-read for [Topic]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Ahead of our meeting on [Date], here is the agenda and the material to review. Please take a few minutes with the pre-read so we can focus the discussion.
 

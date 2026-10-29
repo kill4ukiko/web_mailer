@@ -151,6 +151,42 @@ def test_merge_unknown_tags_become_empty():
     assert out == "Hi Ada "
 
 
+def test_merge_default_fallback_for_missing_values():
+    assert substitute_merge_tags("Hello {{first_name|there}}", {}, "u") == "Hello there"
+    assert substitute_merge_tags(
+        "Hello {{first_name|there}}", {"first_name": "Ada"}, "u"
+    ) == "Hello Ada"
+
+
+def test_merge_greeting_name_prefers_first_then_last_then_there():
+    both = {"first_name": "Ada", "last_name": "Lovelace"}
+    assert substitute_merge_tags("Hi {{greeting_name}}", both, "u") == "Hi Ada"
+    assert substitute_merge_tags(
+        "Hi {{greeting_name}}", {"last_name": "Lovelace"}, "u"
+    ) == "Hi Lovelace"
+    assert substitute_merge_tags("Hi {{greeting_name}}", {}, "u") == "Hi there"
+    assert substitute_merge_tags(
+        "Hi {{greeting_name}}", {"first_name": "  ", "last_name": None}, "u"
+    ) == "Hi there"
+
+
+def test_merge_full_name_handles_missing_parts():
+    assert substitute_merge_tags(
+        "{{full_name}}", {"first_name": "Ada", "last_name": "Lovelace"}, "u"
+    ) == "Ada Lovelace"
+    assert substitute_merge_tags("{{full_name}}", {"first_name": "Ada"}, "u") == "Ada"
+    assert substitute_merge_tags("{{full_name}}", {"last_name": "Lovelace"}, "u") == "Lovelace"
+    assert substitute_merge_tags("{{full_name|there}}", {}, "u") == "there"
+
+
+def test_merge_fallback_is_escaped_in_html():
+    out = substitute_merge_tags(
+        "{{first_name|<b>there</b>}}", {}, "u", escape_html=True
+    )
+    assert "&lt;b&gt;there&lt;/b&gt;" in out
+    assert "<b>" not in out
+
+
 def test_render_email_builds_shell_and_footer_for_fragment():
     out_html, _ = render_email("<p>Hi {{first_name}}</p>", None, CID, RID, BASE,
                                context={"first_name": "Ada"})
@@ -170,3 +206,14 @@ def test_render_preview_accepts_custom_context():
     out_html, _ = render_preview("<p>Hi {{first_name}}</p>",
                                  context={"first_name": "Grace"}, base_url=BASE)
     assert "Hi Grace" in out_html
+
+
+def test_render_preview_greets_contacts_without_names():
+    out_html, out_text = render_preview(
+        "<p>Hello {{greeting_name}},</p>",
+        "Hello {{greeting_name}},",
+        context={"first_name": None, "last_name": None},
+        base_url=BASE,
+    )
+    assert "Hello there," in out_html
+    assert "Hello there," in out_text

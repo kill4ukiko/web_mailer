@@ -1,6 +1,6 @@
 [Project Name]: status update
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Here's this week's progress on [Project Name]. Overall status: [On Track / At Risk / Blocked].
 

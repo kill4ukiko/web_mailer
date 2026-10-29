@@ -1,6 +1,6 @@
-Welcome to [Company Name], {{first_name}}
+Welcome to [Company Name], {{greeting_name}}
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 We're excited to have you join us. Your start date is [Start Date], and your manager will be [Manager Name].
 

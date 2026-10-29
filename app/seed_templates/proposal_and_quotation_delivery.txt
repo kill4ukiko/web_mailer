@@ -1,6 +1,6 @@
 Your proposal is ready
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Thank you for the conversation about [Project Name]. The scope, timeline and pricing are set out in the proposal below.
 

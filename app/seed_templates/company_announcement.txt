@@ -1,6 +1,6 @@
 [Announcement Title]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 I'm writing to share an update from [Company Name] about [Topic]. [One-sentence summary of what changed and why.]
 

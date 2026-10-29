@@ -91,6 +91,13 @@ def test_render_sms_metadata_and_missing_tags():
     assert body == "Acme "
 
 
+def test_render_sms_greeting_and_fallback_tags():
+    assert sc.render_sms("Hi {{greeting_name}}", {"last_name": "Doe"})[0] == "Hi Doe"
+    assert sc.render_sms("Hi {{greeting_name}}", {})[0] == "Hi there"
+    assert sc.render_sms("Hi {{first_name|there}}", {})[0] == "Hi there"
+    assert sc.render_sms("Hi {{full_name}}", {"first_name": "Ada"})[0] == "Hi Ada"
+
+
 def test_render_sms_stop_footer_only_once():
     body, _ = sc.render_sms("Sale now!", include_stop=True)
     assert "Reply STOP to opt out." in body

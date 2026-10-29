@@ -1,6 +1,6 @@
 Your [Product/Service] renewal is coming up
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Your current [Product/Service] plan renews on [Renewal Date]. Here's what changes and the options available.
 

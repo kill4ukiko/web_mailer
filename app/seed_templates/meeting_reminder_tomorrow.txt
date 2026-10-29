@@ -1,6 +1,6 @@
 Reminder: [Topic] is tomorrow
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 This is a quick reminder that we'll meet tomorrow, [Date], at [Meeting Time].
 

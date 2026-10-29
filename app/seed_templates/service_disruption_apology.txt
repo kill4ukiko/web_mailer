@@ -1,6 +1,6 @@
 An update on the [Service] disruption
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 On [Incident Date], [Service] experienced an interruption affecting [Affected Feature]. We're sorry for the impact this had on your work.
 

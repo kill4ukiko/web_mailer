@@ -239,7 +239,7 @@ def _send_once(campaign_id: str) -> dict:
         }
 
     def content_factory(recipient: dict) -> dict:
-        from app.core.content import render_email
+        from app.core.content import render_email, substitute_merge_tags
 
         context = {
             "first_name": recipient.get("first_name"),
@@ -255,7 +255,8 @@ def _send_once(campaign_id: str) -> dict:
             base_url,
             context=context,
         )
-        return {"html": html_body, "text": text_body}
+        subject = substitute_merge_tags(campaign["subject"], context, "")
+        return {"subject": subject, "html": html_body, "text": text_body}
 
     # Global collision-averse pacing: no two sends anywhere share a timestamp.
     gate = PacingGate(

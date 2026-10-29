@@ -1,6 +1,6 @@
 Kickoff confirmed: [Project Name]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 We're ready to start [Project Name]. This first session aligns the team on scope, milestones and how we'll work together.
 

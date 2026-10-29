@@ -1,6 +1,6 @@
 Our meeting has a new time
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 The [Topic] meeting originally scheduled for [Original Date] has been moved. The new details are below.
 

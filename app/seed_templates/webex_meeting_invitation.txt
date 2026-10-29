@@ -1,6 +1,6 @@
 You're invited to a Webex meeting
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 We'll meet to discuss [Topic] and agree on the actions that follow.
 

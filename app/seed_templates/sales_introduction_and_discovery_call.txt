@@ -1,6 +1,6 @@
 A quick idea for [Company Name]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 I'm [Your Name] at [Company Name]. I work with teams like yours to improve [Goal] without adding complexity. I had one idea I thought was worth sharing.
 

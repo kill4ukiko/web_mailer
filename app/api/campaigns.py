@@ -425,6 +425,8 @@ def send_test(campaign_id: str):
     from app.core.mailer_config import effective_base_url
 
     base_url = effective_base_url(supabase)
+    from app.core.content import substitute_merge_tags
+
     context = {"first_name": "Test", "last_name": None, "email": to_email}
     html, text = render_email(
         campaign["html_content"],
@@ -441,7 +443,7 @@ def send_test(campaign_id: str):
         message_id = BrevoClient().send_email(
             to_email=to_email,
             to_name="Test",
-            subject=f"[TEST] {campaign['subject']}",
+            subject=f"[TEST] {substitute_merge_tags(campaign['subject'], context, '')}",
             html_content=html,
             plain_text=text,
             from_email=campaign["from_email"],

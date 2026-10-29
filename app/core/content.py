@@ -19,10 +19,11 @@ from urllib.parse import quote
 
 from flask import current_app, has_app_context
 
+from app.core.merge_tags import render_merge_tags
+
 _HREF_RE = re.compile(r"""(href\s*=\s*)("([^"]*)"|'([^']*)')""", re.IGNORECASE)
 _BODY_CLOSE_RE = re.compile(r"</body\s*>", re.IGNORECASE)
 _HTML_SHELL_RE = re.compile(r"<!doctype\s+html|<html[\s>]", re.IGNORECASE)
-_MERGE_RE = re.compile(r"\{\{\s*([A-Za-z0-9_.]+)\s*\}\}")
 # Link targets we must never rewrite.
 _SKIP_SCHEMES = ("mailto:", "tel:", "cid:", "data:", "javascript:")
 _TRACK_PATH = "/api/track/"
@@ -191,39 +192,21 @@ def substitute_merge_tags(
     *,
     escape_html: bool = False,
 ) -> str:
-    """Replace {{first_name}}/{{last_name}}/{{email}}/{{unsubscribe}} and custom tags.
+    """Replace contact, unsubscribe, metadata and derived merge tags.
+
+    Supports ``{{first_name|there}}`` fallbacks plus the derived
+    ``{{greeting_name}}`` (first name, else last name, else "there") and
+    ``{{full_name}}`` tags.
 
     ``escape_html=True`` must be used for HTML bodies: contact fields are
     attacker-controlled data and must not be injected as markup.
     """
-    if not text:
-        return text
-
-    metadata = context.get("metadata") if isinstance(context.get("metadata"), dict) else {}
-
-    def _lookup(key: str) -> str:
-        # Support dotted access to metadata, e.g. {{metadata.company}}.
-        if key.lower().startswith("metadata."):
-            sub = key.split(".", 1)[1]
-            if sub in metadata:
-                return str(metadata[sub])
-            if sub in context:
-                return str(context[sub])
-            return ""
-        for source in (context, metadata):
-            if key in source:
-                return "" if source[key] is None else str(source[key])
-        return ""
-
-    def _replace(match: re.Match) -> str:
-        name = match.group(1)
-        lowered = name.lower()
-        if lowered in ("unsubscribe", "unsubscribe_url"):
-            return unsubscribe_url
-        value = _lookup(name)
-        return html_lib.escape(value) if escape_html else value
-
-    return _MERGE_RE.sub(_replace, text)
+    return render_merge_tags(
+        text,
+        context,
+        specials={"unsubscribe": unsubscribe_url, "unsubscribe_url": unsubscribe_url},
+        escape_html=escape_html,
+    )
 
 
 def rewrite_links(

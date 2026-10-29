@@ -1,6 +1,6 @@
 Join the [Project Name] meeting on Microsoft Teams
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 You're invited to review progress, confirm priorities and agree on the next steps for [Project Name].
 

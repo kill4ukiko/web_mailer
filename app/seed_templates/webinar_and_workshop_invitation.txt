@@ -1,6 +1,6 @@
 You're invited: [Webinar Title]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 Join us for a practical session on [Topic]. We'll share [Key Takeaway] and leave time for live questions.
 

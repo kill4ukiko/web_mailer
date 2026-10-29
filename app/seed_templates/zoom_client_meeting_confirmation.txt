@@ -1,6 +1,6 @@
 Your Zoom meeting is confirmed
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 This confirms our call on [Date]. We'll cover [Topic] and leave time for questions.
 

@@ -1,6 +1,6 @@
 Payment received - thank you
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 We've received your payment of [Amount] for invoice [Invoice Number]. This email is your receipt.
 

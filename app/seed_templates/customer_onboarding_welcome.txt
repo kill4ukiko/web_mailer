@@ -1,6 +1,6 @@
-Welcome aboard, {{first_name}}
+Welcome aboard, {{greeting_name}}
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 We're glad to have you with us. Your [Product/Service] account is ready, and here are the first steps to get value quickly.
 

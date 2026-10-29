@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.core.merge_tags import render_merge_tags
 from app.config import (
     SMS_SENDER_MAX_ALPHANUMERIC,
     SMS_SENDER_MAX_NUMERIC,
@@ -39,7 +40,7 @@ _GSM7_EXTENDED_SET = frozenset("^{}\\[~]|€")
 
 _PHONE_ALLOWED_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 _SENDER_ID_RE = re.compile(r"^[A-Za-z0-9]+$")
-_MERGE_RE = re.compile(r"\{\{\s*([A-Za-z0-9_.]+)\s*\}\}")
+
 
 DEFAULT_STOP_HINT = "Reply STOP to opt out."
 
@@ -166,33 +167,20 @@ def append_stop_footer(text: str) -> str:
 
 
 def substitute_sms_tags(text: str, context: dict[str, Any] | None, stop_text: str = "STOP") -> str:
-    """Replace {{first_name}}/{{last_name}}/{{phone}}/{{unsubscribe}} + metadata."""
-    if not text:
-        return text
-    context = context or {}
-    metadata = context.get("metadata") if isinstance(context.get("metadata"), dict) else {}
+    """Replace contact, metadata and derived merge tags in an SMS body.
 
-    def _lookup(key: str) -> str:
-        if key.lower().startswith("metadata."):
-            sub = key.split(".", 1)[1]
-            if sub in metadata:
-                return "" if metadata[sub] is None else str(metadata[sub])
-            if sub in context:
-                return "" if context[sub] is None else str(context[sub])
-            return ""
-        for source in (context, metadata):
-            if key in source:
-                return "" if source[key] is None else str(source[key])
-        return ""
-
-    def _replace(match: re.Match) -> str:
-        name = match.group(1)
-        lowered = name.lower()
-        if lowered in ("unsubscribe", "unsubscribe_url", "stop"):
-            return stop_text
-        return _lookup(name)
-
-    return _MERGE_RE.sub(_replace, text)
+    Supports ``{{first_name|there}}`` fallbacks plus ``{{greeting_name}}``
+    (first name, else last name, else "there") and ``{{full_name}}``.
+    """
+    return render_merge_tags(
+        text,
+        context,
+        specials={
+            "unsubscribe": stop_text,
+            "unsubscribe_url": stop_text,
+            "stop": stop_text,
+        },
+    )
 
 
 def render_sms(

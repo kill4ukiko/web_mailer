@@ -1,6 +1,6 @@
 A friendly reminder about invoice [Invoice Number]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 This is a reminder that invoice [Invoice Number] for [Amount] is due on [Due Date].
 

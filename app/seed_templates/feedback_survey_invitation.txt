@@ -1,6 +1,6 @@
 We'd value your feedback
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 You recently worked with us on [Topic]. A short survey will help us understand what worked and what we should improve.
 

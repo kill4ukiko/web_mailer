@@ -8,7 +8,15 @@ import pytest
 from scripts import seed_templates as seeder
 
 MERGE_TAG_RE = re.compile(r"\{\{\s*([A-Za-z0-9_.]+)\s*\}\}")
-ALLOWED_TAGS = {"first_name", "last_name", "email", "unsubscribe", "unsubscribe_url"}
+ALLOWED_TAGS = {
+    "first_name",
+    "last_name",
+    "full_name",
+    "greeting_name",
+    "email",
+    "unsubscribe",
+    "unsubscribe_url",
+}
 # Names already present in the shared database; new seeds must not collide.
 RESERVED_NAMES = {"esecure file delivery", "google meeting invitation"}
 LEGACY_STEMS = {"zoom_mail", "docu_sight"}
@@ -30,7 +38,7 @@ def test_seed_template_html_is_well_formed(entry):
     assert "<!-- Preheader -->" in html
     assert "max-width:600px" in html
     assert 'role="presentation"' in html
-    assert "{{first_name}}" in html
+    assert "{{greeting_name}}" in html
     assert "{{unsubscribe}}" in html
     assert 'href="https://' in html
     assert html.count('href="https://') >= 2
@@ -48,7 +56,7 @@ def test_seed_template_plain_text_matches(entry):
         return
 
     assert text and text.strip()
-    assert "Hello {{first_name}}," in text
+    assert "Hello {{greeting_name}}," in text
     assert "{{unsubscribe}}" in text
     assert "https://" in text
     assert not re.search(r"<(?:a|div|p|table|td|tr|h1|ul|li)\b", text, re.IGNORECASE)

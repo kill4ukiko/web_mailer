@@ -117,8 +117,9 @@ class BrevoClient:
                     last_name (plus any extras needed by headers_factory).
 
         content_factory: optional per-recipient renderer returning a dict with
-                    optional keys ``html`` and ``text``. When omitted the shared
-                    html_content / plain_text are used for every recipient.
+                    optional keys ``subject``, ``html`` and ``text``. When
+                    omitted the shared subject / html_content / plain_text are
+                    used for every recipient.
 
         cancel_check: optional callable polled before each send; when it returns
                     True the batch stops early (used by the global kill switch).
@@ -139,6 +140,7 @@ class BrevoClient:
 
             headers = headers_factory(recipient) if headers_factory else {}
             content = content_factory(recipient) if content_factory else {}
+            subject_body = content.get("subject", subject)
             html_body = content.get("html", html_content)
             text_body = content.get("text", plain_text)
             res = SendResult(
@@ -153,7 +155,7 @@ class BrevoClient:
                         f"{recipient.get('first_name', '')} {recipient.get('last_name', '')}".strip()
                         or recipient["email"]
                     ),
-                    subject=subject,
+                    subject=subject_body,
                     html_content=html_body,
                     plain_text=text_body,
                     from_email=from_email,

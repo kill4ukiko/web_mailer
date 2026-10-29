@@ -1,6 +1,6 @@
 You're invited: [Event Name]
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 [Company Name] is hosting [Event Name] on [Date]. Join [Audience] for [Format] covering [Topic].
 

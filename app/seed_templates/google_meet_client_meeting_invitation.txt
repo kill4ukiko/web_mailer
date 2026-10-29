@@ -1,6 +1,6 @@
 You're invited to a Google Meet
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 I'd like to invite you to a short meeting to discuss [Topic]. The agenda is below so we can make the best use of the time.
 

@@ -1,6 +1,6 @@
 This meeting has been cancelled
 
-Hello {{first_name}},
+Hello {{greeting_name}},
 
 I'm sorry to let you know that the [Topic] meeting scheduled for [Date] at [Meeting Time] has been cancelled.
 
