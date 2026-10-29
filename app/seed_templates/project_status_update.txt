@@ -1,0 +1,35 @@
+[Project Name]: status update
+
+Hello {{first_name}},
+
+Here's this week's progress on [Project Name]. Overall status: [On Track / At Risk / Blocked].
+
+DETAILS
+- Reporting period: [Date Range]
+- Overall status: [Status]
+- Completed: [Completed Work]
+- In progress: [In-Progress Work]
+- Next milestone: [Milestone]
+View the project board: https://your-company.example/projects/your-id
+Full report: https://your-company.example/reports/your-id
+
+NEXT STEPS
+1. [Risk 1] - owner [Owner], mitigation [Action].
+2. [Risk 2] - owner [Owner], mitigation [Action].
+3. Escalate anything that needs a decision from you.
+
+Let me know if you'd like anything added to next week's update.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

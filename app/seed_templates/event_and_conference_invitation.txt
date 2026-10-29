@@ -1,0 +1,35 @@
+You're invited: [Event Name]
+
+Hello {{first_name}},
+
+[Company Name] is hosting [Event Name] on [Date]. Join [Audience] for [Format] covering [Topic].
+
+DETAILS
+- Date: [Date]
+- Time: [Start Time] - [End Time] ([Time Zone])
+- Location: [Location]
+- Format: [Format]
+- Speakers: [Speakers]
+Register for the event: https://your-company.example/events/your-event
+Full agenda: https://your-company.example/events/agenda
+
+NEXT STEPS
+1. Register to reserve your place.
+2. Bring your ticket or confirmation email.
+3. Join the networking session after the talks.
+
+Places are limited; registration closes on [Registration Deadline].
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

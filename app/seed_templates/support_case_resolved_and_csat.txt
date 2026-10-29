@@ -1,0 +1,38 @@
+Your support case is resolved
+
+Hello {{first_name}},
+
+Case #[Case Number] - [Case Subject] - has been marked resolved. Here's a summary of what we did.
+
+DETAILS
+- Case number: #[Case Number]
+- Subject: [Case Subject]
+- Resolved on: [Resolved Date]
+- Resolution: [Resolution Summary]
+- Agent: [Agent Name]
+
+If the issue returns, you can reopen the case within [Reopen Window].
+
+Rate your support experience: https://your-company.example/feedback/your-id
+Case details: https://your-company.example/support/cases/your-id
+
+NEXT STEPS
+1. Confirm everything is working as expected.
+2. Share feedback using the link in this email.
+3. Reply if you need anything else.
+
+Thank you for your patience while we worked on this.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

@@ -1,0 +1,35 @@
+You're invited to a Google Meet
+
+Hello {{first_name}},
+
+I'd like to invite you to a short meeting to discuss [Topic]. The agenda is below so we can make the best use of the time.
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Platform: Google Meet
+- Agenda: [Topic]
+Join the Google Meet: https://meet.google.com/your-meeting-code
+Add to calendar: https://your-company.example/calendar/your-event-id
+
+NEXT STEPS
+1. Join a few minutes early to test your camera and microphone.
+2. Have [Document/Reference] ready for the discussion.
+3. Reply with any topics you'd like to add to the agenda.
+
+If the time no longer works, use the calendar link in this email and I'll send a new invitation.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

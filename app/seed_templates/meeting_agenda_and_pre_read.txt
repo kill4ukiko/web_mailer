@@ -1,0 +1,35 @@
+Agenda and pre-read for [Topic]
+
+Hello {{first_name}},
+
+Ahead of our meeting on [Date], here is the agenda and the material to review. Please take a few minutes with the pre-read so we can focus the discussion.
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Meeting link: [Meeting Link]
+- Pre-read: [Document Name]
+Open the agenda: https://your-company.example/agenda/your-id
+Download the pre-read: https://your-company.example/files/your-document
+
+NEXT STEPS
+1. Review the pre-read before the meeting.
+2. Note any questions or decisions you need.
+3. Add items to the agenda by [Reply By Date].
+
+If you can't access the documents, reply and I'll send them directly.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

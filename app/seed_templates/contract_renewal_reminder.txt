@@ -1,0 +1,35 @@
+Your [Product/Service] renewal is coming up
+
+Hello {{first_name}},
+
+Your current [Product/Service] plan renews on [Renewal Date]. Here's what changes and the options available.
+
+DETAILS
+- Current plan: [Plan Name]
+- Renewal date: [Renewal Date]
+- Renewal amount: [Amount]
+- Billing cycle: [Billing Cycle]
+- Account: [Account Number]
+Review renewal options: https://your-company.example/renew
+Account manager: https://calendly.com/your-team/renewal
+
+NEXT STEPS
+1. Confirm your plan and seat count.
+2. Update billing details if needed.
+3. Reply by [Decision Date] with any changes.
+
+If you'd like to adjust the plan, contact us before [Decision Date].
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

@@ -1,0 +1,35 @@
+Payment received - thank you
+
+Hello {{first_name}},
+
+We've received your payment of [Amount] for invoice [Invoice Number]. This email is your receipt.
+
+DETAILS
+- Receipt number: [Receipt Number]
+- Payment date: [Payment Date]
+- Amount paid: [Amount]
+- Payment method: [Payment Method]
+- Invoice: [Invoice Number]
+View your receipt: https://your-company.example/receipts/your-id
+Invoice copy: https://your-company.example/invoices/your-id
+
+NEXT STEPS
+1. Keep this receipt for your records.
+2. Quote the receipt number in any billing question.
+3. Update billing details from your account settings.
+
+Thank you for your business.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

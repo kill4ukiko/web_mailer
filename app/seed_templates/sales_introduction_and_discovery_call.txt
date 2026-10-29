@@ -1,0 +1,33 @@
+A quick idea for [Company Name]
+
+Hello {{first_name}},
+
+I'm [Your Name] at [Company Name]. I work with teams like yours to improve [Goal] without adding complexity. I had one idea I thought was worth sharing.
+
+DETAILS
+- Why now: [Reason for Reaching Out]
+- Focus: [Goal]
+- Time needed: 30 minutes
+Book a 30-minute call: https://calendly.com/your-team/30min
+See how it works: https://your-company.example/product
+
+NEXT STEPS
+1. Your current process and where it slows down.
+2. One quick win you could apply immediately.
+3. Whether a follow-up is worth your time.
+
+If now isn't the right time, reply 'not now' and I'll close the loop.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

@@ -1,0 +1,36 @@
+Kickoff confirmed: [Project Name]
+
+Hello {{first_name}},
+
+We're ready to start [Project Name]. This first session aligns the team on scope, milestones and how we'll work together.
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Platform: [Platform]
+- Project: [Project Name]
+- Project lead: [Project Lead]
+Join the kickoff: https://meet.google.com/your-kickoff-code
+Project plan: https://your-company.example/projects/your-id
+
+NEXT STEPS
+1. Review the project plan before the call.
+2. Confirm your role and point of contact.
+3. Bring any risks or dependencies to discuss.
+
+After the kickoff, I'll send a short summary and the agreed timeline.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

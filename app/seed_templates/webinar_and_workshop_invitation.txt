@@ -1,0 +1,35 @@
+You're invited: [Webinar Title]
+
+Hello {{first_name}},
+
+Join us for a practical session on [Topic]. We'll share [Key Takeaway] and leave time for live questions.
+
+DETAILS
+- Date: [Date]
+- Time: [Start Time] ([Time Zone])
+- Duration: [Duration]
+- Format: Live webinar
+- Speaker: [Speaker Name]
+Reserve your seat: https://your-company.example/webinar
+Add to calendar: https://your-company.example/calendar/webinar
+
+NEXT STEPS
+1. Register to receive the joining link.
+2. Submit a question when you register.
+3. A recording will be sent to everyone who registers.
+
+Seats are limited; registration closes on [Registration Deadline].
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

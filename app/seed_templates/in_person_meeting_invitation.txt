@@ -1,0 +1,36 @@
+Meet us at [Location]
+
+Hello {{first_name}},
+
+I'd like to invite you to an in-person meeting at [Location] to discuss [Topic].
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Location: [Location]
+- Address: [Street Address]
+- Room: [Room] - reception will direct you
+Get directions: https://maps.google.com/?q=your+office+address
+Add to calendar: https://your-company.example/calendar/your-event-id
+
+NEXT STEPS
+1. Bring a photo ID for building access.
+2. Arrive 10 minutes early for check-in.
+3. Ask for [Contact Name] at reception.
+
+If you need accessibility support or a different time, just reply to this email.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

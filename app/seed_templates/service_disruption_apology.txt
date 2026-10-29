@@ -1,0 +1,38 @@
+An update on the [Service] disruption
+
+Hello {{first_name}},
+
+On [Incident Date], [Service] experienced an interruption affecting [Affected Feature]. We're sorry for the impact this had on your work.
+
+DETAILS
+- Incident date: [Incident Date]
+- Duration: [Incident Duration]
+- Affected: [Affected Feature]
+- Current status: [Resolved / Monitoring]
+- Reference: [Incident ID]
+
+If you believe your data or account was affected, contact support and quote reference [Incident ID].
+
+Read the incident report: https://status.your-company.example/incidents/your-id
+Contact support: https://your-company.example/support
+
+NEXT STEPS
+1. We've restored service and are monitoring for recurrence.
+2. We're reviewing the root cause and prevention steps.
+3. We'll publish a full post-incident report by [Report Date].
+
+We take this seriously and will share what we learn.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

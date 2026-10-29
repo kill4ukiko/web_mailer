@@ -1,0 +1,36 @@
+Your Zoom meeting is confirmed
+
+Hello {{first_name}},
+
+This confirms our call on [Date]. We'll cover [Topic] and leave time for questions.
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Platform: Zoom
+- Meeting ID: [Meeting ID]
+- Passcode: [Passcode]
+Join the Zoom meeting: https://zoom.us/j/your-meeting-id
+Reschedule this call: https://calendly.com/your-team/reschedule
+
+NEXT STEPS
+1. Test your audio before joining.
+2. Keep your meeting ID and passcode handy.
+3. Send any questions in advance to [Email Address].
+
+Need to change the time? Use the reschedule link in this email and we'll confirm the new slot.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

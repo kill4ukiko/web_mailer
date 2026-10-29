@@ -1,0 +1,35 @@
+Reminder: [Topic] is tomorrow
+
+Hello {{first_name}},
+
+This is a quick reminder that we'll meet tomorrow, [Date], at [Meeting Time].
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Platform: [Platform]
+- Agenda: [Topic]
+Join tomorrow's meeting: https://meet.google.com/your-meeting-code
+Reschedule: https://calendly.com/your-team/reschedule
+
+NEXT STEPS
+1. Test your connection before joining.
+2. Have your notes and questions ready.
+3. Reply if you can no longer attend.
+
+Looking forward to speaking with you.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

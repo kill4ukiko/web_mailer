@@ -1,0 +1,37 @@
+Planned maintenance on [Date]
+
+Hello {{first_name}},
+
+We're performing scheduled maintenance on [Service] to improve reliability and performance. During this window, [Affected Feature] may be unavailable.
+
+DETAILS
+- Date: [Date]
+- Window: [Start Time] - [End Time] ([Time Zone])
+- Service: [Service]
+- Impact: [Expected Impact]
+
+No action is needed. Any queued work will resume automatically after the window.
+
+View the status page: https://status.your-company.example
+Maintenance notes: https://your-company.example/maintenance/your-id
+
+NEXT STEPS
+1. Save your work before [Start Time].
+2. Expect brief interruptions to [Affected Feature].
+3. Follow the status page for updates.
+
+We'll confirm when the work is complete.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

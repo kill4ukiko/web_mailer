@@ -1,0 +1,34 @@
+See [Product] in action
+
+Hello {{first_name}},
+
+A 20-minute walkthrough of [Product], tailored to [Company Name]'s [Goal]. No slides - just the product and your questions.
+
+DETAILS
+- Format: Live demo
+- Length: 20 minutes
+- For: [Company Name]
+- Focus: [Goal]
+Book your demo: https://calendly.com/your-team/demo
+Short overview: https://your-company.example/demo/video
+
+NEXT STEPS
+1. Choose a time that suits you.
+2. Tell us what you'd like to see.
+3. We'll send a calendar invite and joining link.
+
+Prefer a written overview first? Reply and I'll send one.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

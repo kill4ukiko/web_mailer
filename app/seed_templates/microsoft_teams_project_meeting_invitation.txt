@@ -1,0 +1,35 @@
+Join the [Project Name] meeting on Microsoft Teams
+
+Hello {{first_name}},
+
+You're invited to review progress, confirm priorities and agree on the next steps for [Project Name].
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Platform: Microsoft Teams
+- Project: [Project Name]
+Join the Teams meeting: https://teams.microsoft.com/l/meetup-join/your-meeting-id
+Project brief: https://your-company.example/projects/your-id
+
+NEXT STEPS
+1. Review the latest status update before the call.
+2. Bring any blockers or risks to discuss.
+3. Join from a quiet room with a stable connection.
+
+The meeting will start on time, and the notes will follow afterwards.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

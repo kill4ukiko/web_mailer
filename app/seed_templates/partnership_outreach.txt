@@ -1,0 +1,33 @@
+A partnership idea for [Company Name]
+
+Hello {{first_name}},
+
+I've been following [Company Name]'s work in [Industry] and see a natural fit with what we do at [Your Company]. I'd like to explore whether a partnership makes sense.
+
+DETAILS
+- Our focus: [Your Focus]
+- Your focus: [Their Focus]
+- Shared opportunity: [Shared Opportunity]
+Explore a partnership: https://calendly.com/your-team/partner
+About us: https://your-company.example/about
+
+NEXT STEPS
+1. A short intro call to compare priorities.
+2. A simple pilot with clear success measures.
+3. A review after [Timeframe] to decide next steps.
+
+If someone else is the right contact, I'd appreciate a pointer.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

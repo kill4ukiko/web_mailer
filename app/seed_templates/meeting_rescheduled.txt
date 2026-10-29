@@ -1,0 +1,38 @@
+Our meeting has a new time
+
+Hello {{first_name}},
+
+The [Topic] meeting originally scheduled for [Original Date] has been moved. The new details are below.
+
+DETAILS
+- New date: [New Date]
+- New time: [New Time] ([Time Zone])
+- Duration: [Duration]
+- Platform: [Platform]
+- Original time: [Original Date] at [Original Time]
+
+Your original calendar invitation is now out of date. Please accept the updated invitation so the new time appears in your calendar.
+
+Confirm the new time: https://calendly.com/your-team/confirm
+Updated invitation: https://your-company.example/calendar/your-event-id
+
+NEXT STEPS
+1. Accept the updated calendar invitation.
+2. Check that the new time works for anyone joining with you.
+3. Reply if the new time is not possible.
+
+If the new time doesn't work, reply and we'll find another slot.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

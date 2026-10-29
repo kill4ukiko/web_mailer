@@ -1,0 +1,36 @@
+Your call is confirmed
+
+Hello {{first_name}},
+
+This confirms your scheduled call with [Contact Name] on [Date].
+
+DETAILS
+- Date: [Date]
+- Time: [Meeting Time] ([Time Zone])
+- Duration: [Duration]
+- Call type: Phone
+- Number: [Phone Number]
+- Reference: [Reference Number]
+Reschedule online: https://calendly.com/your-team/reschedule
+Call us: tel:+15551234567
+
+NEXT STEPS
+1. Find a quiet place with a reliable signal.
+2. Have [Reference/Document] ready.
+3. If we can't reach you, we'll try once more and then email.
+
+Need a different time? Use the reschedule link in this email.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

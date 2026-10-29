@@ -1,0 +1,38 @@
+A friendly reminder about invoice [Invoice Number]
+
+Hello {{first_name}},
+
+This is a reminder that invoice [Invoice Number] for [Amount] is due on [Due Date].
+
+DETAILS
+- Invoice number: [Invoice Number]
+- Invoice date: [Invoice Date]
+- Amount due: [Amount]
+- Due date: [Due Date]
+- Reference: [Reference]
+
+If payment has already been sent, please disregard this reminder. It can take 1-2 business days to appear.
+
+Pay invoice securely: https://your-company.example/pay/your-invoice-id
+Invoice copy: https://your-company.example/invoices/your-id
+
+NEXT STEPS
+1. Pay online using the secure payment link in this email.
+2. Quote the invoice number with any bank transfer.
+3. Reply if you need a copy for your finance team.
+
+Thank you - we appreciate your business.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}

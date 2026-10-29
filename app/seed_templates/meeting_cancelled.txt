@@ -1,0 +1,37 @@
+This meeting has been cancelled
+
+Hello {{first_name}},
+
+I'm sorry to let you know that the [Topic] meeting scheduled for [Date] at [Meeting Time] has been cancelled.
+
+DETAILS
+- Original date: [Date]
+- Original time: [Meeting Time] ([Time Zone])
+- Topic: [Topic]
+- Status: Cancelled
+
+No action is needed if you no longer wish to meet. If the meeting is still useful, you can book a new time using the link in this email.
+
+Book a new time: https://calendly.com/your-team/30min
+Contact us: https://your-company.example/contact
+
+NEXT STEPS
+1. Cancel the original calendar invitation if it is still on your calendar.
+2. Book a new time if you'd still like to meet.
+3. Reply with any questions about the change.
+
+Apologies for any inconvenience, and thank you for your understanding.
+
+Best regards,
+[Your Name]
+[Job Title], [Company Name]
+you@your-company.example
++1 (555) 123-4567
+https://your-company.example
+
+---
+[Company Name] · [Physical Address] · [Phone]
+You received this email because you are a customer or asked us to contact you.
+Website: https://your-company.example
+Privacy: https://your-company.example/privacy
+Unsubscribe: {{unsubscribe}}
