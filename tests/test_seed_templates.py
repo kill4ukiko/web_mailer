@@ -88,6 +88,65 @@ def test_new_catalog_has_32_templates():
     assert len(new) == 32
 
 
+BRAND_DESIGN = {
+    "google_meet_client_meeting_invitation": {
+        "header_bg": "#4285F4",
+        "wordmark": ">Google Meet</div>",
+        "eyebrow": "#D3E3FD",
+        "cta": "#4285F4",
+        "details_bg": "#F0F6FF",
+    },
+    "zoom_client_meeting_confirmation": {
+        "header_bg": "#0B4C67",
+        "wordmark": ">Zoom</div>",
+        "eyebrow": "#9CC3D8",
+        "cta": "#2D8CFF",
+        "details_bg": "#F0F7FF",
+    },
+    "microsoft_teams_project_meeting_invitation": {
+        "header_bg": "#0078D4",
+        "wordmark": ">Microsoft Teams</div>",
+        "eyebrow": "#CFE3F5",
+        "cta": "#0078D4",
+        "details_bg": "#F0F6FC",
+    },
+    "webex_meeting_invitation": {
+        "header_bg": "#0068B5",
+        "wordmark": ">Webex</div>",
+        "eyebrow": "#C7E0F4",
+        "cta": "#0068B5",
+        "details_bg": "#F0F7FB",
+    },
+}
+
+
+def test_new_templates_use_richer_generic_design():
+    for stem, _name, _subject in seeder.SEED_TEMPLATES:
+        if stem in LEGACY_STEMS or stem in BRAND_DESIGN:
+            continue
+        html, _ = seeder.read_template(stem)
+        assert 'background-color:#1E293B' in html, f"{stem} should use the rich dark header"
+        assert "font-weight:700; color:#FFFFFF;" in html, f"{stem} should use the light wordmark"
+        assert "text-transform:uppercase; color:#93C5FD;" in html, f"{stem} should use the light eyebrow"
+        assert 'bgcolor="#FFFFFF"' in html, f"{stem} should use a white friendly background"
+        assert "background-color:#F0F6FF;" in html, f"{stem} should use a light detail surface"
+
+
+def test_major_brand_templates_match_real_email_branding():
+    for stem, design in BRAND_DESIGN.items():
+        entry = next(e for e in seeder.SEED_TEMPLATES if e[0] == stem)
+        html, _ = seeder.read_template(stem)
+
+        assert f"background-color:{design['header_bg']};" in html, f"{stem} header color"
+        assert design["wordmark"] in html, f"{stem} wordmark"
+        assert f"color:{design['eyebrow']};" in html, f"{stem} eyebrow color"
+        assert (
+            f'bgcolor="{design["cta"]}" style="border-radius:6px; background-color:{design["cta"]};">'
+            in html
+        ), f"{stem} CTA color"
+        assert f"background-color:{design['details_bg']};" in html, f"{stem} details color"
+
+
 class FakeSupabase:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
